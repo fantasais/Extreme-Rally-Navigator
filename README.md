@@ -1,6 +1,18 @@
-# Extreme Rally Navigator v0.1
+# Extreme Rally Navigator v0.3
 
 Android-first installable PWA for loading rally GPX tracks, synchronising instruction waypoints, previewing bends/gradient and automatically timing configured DZ/FZ zones.
+
+## v0.3 simplified stage flow
+
+- Upload GPX, enter the official start time and tap **Arm Stage**.
+- GPS permission and position acquisition happen automatically while armed.
+- Official-time countdown automatically starts the stage timer and live tracking.
+- Rally Mode contains no full map or GPS/Replay controls.
+- The primary display is upcoming turn, direction, severity and distance.
+- A following-turn call and small physical-roadbook reference remain secondary.
+- Off-route and DZ/FZ information appears only when relevant.
+- **Test Without Driving** simulates the stage using the same turn-call display.
+- Optional turn sensitivity and DZ/FZ configuration are collapsed by default.
 
 ## Deploy through GitHub + Vercel
 
