@@ -1,6 +1,16 @@
-# Extreme Rally Navigator v0.1
+# Extreme Rally Navigator v0.2
 
 Android-first installable PWA for loading rally GPX tracks, synchronising instruction waypoints, previewing bends/gradient and automatically timing configured DZ/FZ zones.
+
+## v0.2 portrait interface
+
+- Phone-first portrait setup and Rally Mode.
+- Removed the decorative hero heading and technical track-point metric.
+- Compact horizontal stage selector and simplified route overview.
+- Route overview no longer prints every waypoint label over the map.
+- Current and next roadbook instructions are prioritized in Rally Mode.
+- DZ/FZ remains optional and is only preselected when explicit DZ/FZ remarks exist.
+- The v0.1.1 GPX parser correction is retained.
 
 ## Deploy through GitHub + Vercel
 
