@@ -1,28 +1,40 @@
-# Extreme Rally Navigator v0.1
+# Extreme Rally Navigator v0.4
 
-Android-first installable PWA for loading rally GPX tracks, synchronising instruction waypoints, previewing bends/gradient and automatically timing configured DZ/FZ zones.
+Portrait-first Android PWA for extreme-rally GPX navigation. Its layout follows the compact, card-led structure of the TSD Rally Computer while keeping the moving display focused on the next meaningful turn.
 
-## Deploy through GitHub + Vercel
+## v0.4 workflow
 
-1. Create a new empty GitHub repository.
-2. Upload every file and folder from this package to the repository root.
-3. In Vercel, choose **Add New → Project**, import the repository and click **Deploy**. Vercel detects Next.js automatically; no environment variables are needed.
-4. Open the HTTPS Vercel URL in Chrome on Android. Choose **Add to Home screen → Install**.
-5. Open the installed app once with internet available so its application shell is cached.
+1. Upload one or more GPX files from the single **Upload GPX** control.
+2. Select the stage to configure.
+3. Enter its official start time, turn-assist level and optional DZ/FZ speed zone.
+4. Tap **Arm Start**. GPS acquisition and the countdown run automatically.
+5. At zero, Rally mode starts and shows the upcoming turn, distance, following turn and roadbook reference. The full route map remains in Setup only.
 
-## Test sequence
+**Start Now** begins immediately. **Test Selected GPX** replays the chosen route without driving.
 
-1. Start with the built-in demo stage and use **Replay**.
-2. Import an actual extreme-rally `.gpx` file.
-3. Verify route distance, instruction count, waypoint order and elevation availability.
-4. Select DZ and FZ instructions and enter the speed limit.
-5. Open Rally Mode outdoors, allow precise location and press **LIVE GPS**.
+## Per-GPX setup isolation
 
-## v0.1 boundaries
+Every imported GPX has its own saved configuration:
 
-- GPX parsing and route data remain on the device; nothing is uploaded.
-- Live GPS snaps the phone position to the nearest point on the selected track.
-- DZ/FZ triggering uses the snapped route position and needs field validation before competition.
-- Elevation calls require `<ele>` values in the GPX.
-- Bend calls are geometry-based previews, not pace notes or a substitute for the organiser's roadbook.
-- Offline map tiles are not included; the route remains visible as an offline vector trace.
+- Official start time
+- Turn-assist sensitivity
+- DZ instruction
+- FZ instruction
+- Speed limit and optional official zone distance
+
+Changing the selected GPX switches all these values together. DZ/FZ instructions are validated against the selected route, and FZ must occur after DZ. Arming a stage freezes a snapshot of that GPX and its setup so later selection changes cannot alter an active stage. Imported routes and their setups are stored locally on the device.
+
+## Deploy through GitHub and Vercel
+
+1. Extract the package and upload every file and folder to the root of the GitHub repository.
+2. Commit the changes. Vercel will redeploy the connected repository automatically.
+3. No environment variables or custom Vercel build settings are required.
+4. Open the HTTPS Vercel URL in Chrome on Android and install the PWA.
+5. After an update, close and reopen the installed app once so the new offline cache activates.
+
+## Competition-use boundaries
+
+- GPX parsing, configuration and navigation data remain on the device.
+- Turn calls are geometry-based previews, not pace notes or a substitute for the organiser's roadbook.
+- GPS snapping, automatic instruction advancement and DZ/FZ triggering require field validation before competition use.
+- Elevation guidance requires elevation values in the GPX.
