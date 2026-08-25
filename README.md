@@ -1,28 +1,42 @@
-# Extreme Rally Navigator v0.1
+# Extreme Rally Navigator v0.5
 
-Android-first installable PWA for loading rally GPX tracks, synchronising instruction waypoints, previewing bends/gradient and automatically timing configured DZ/FZ zones.
+Portrait-first Android PWA for extreme-rally GPX navigation.
 
-## Deploy through GitHub + Vercel
+## v0.5 navigation correction
 
-1. Create a new empty GitHub repository.
-2. Upload every file and folder from this package to the repository root.
-3. In Vercel, choose **Add New → Project**, import the repository and click **Deploy**. Vercel detects Next.js automatically; no environment variables are needed.
-4. Open the HTTPS Vercel URL in Chrome on Android. Choose **Add to Home screen → Install**.
-5. Open the installed app once with internet available so its application shell is cached.
+This release replaces the first live-tracking engine after real-road testing exposed unreliable distance and turn alignment.
 
-## Test sequence
+- Holds an Android screen wake lock while a stage is armed or running, and reacquires it when the app returns to the foreground.
+- Projects every GPS fix onto the nearest position along a GPX line segment instead of snapping to the nearest stored track point.
+- Uses route continuity, vehicle heading and plausible travel distance to reduce jumps at crossings and nearby parallel sections.
+- Shows a large two-decimal route odometer and large live vehicle speed.
+- Smooths GPS speed while preserving useful response.
+- Interpolates route geometry at fixed distance intervals for turn analysis.
+- Places generated calls near the detected bend entry rather than an arbitrary stored GPX point.
+- Projects instruction waypoints onto route segments for more accurate instruction and DZ/FZ distances.
+- Records a private live-run diagnostic CSV that can be downloaded from Controls. Nothing is uploaded automatically.
 
-1. Start with the built-in demo stage and use **Replay**.
-2. Import an actual extreme-rally `.gpx` file.
-3. Verify route distance, instruction count, waypoint order and elevation availability.
-4. Select DZ and FZ instructions and enter the speed limit.
-5. Open Rally Mode outdoors, allow precise location and press **LIVE GPS**.
+## Stage workflow
 
-## v0.1 boundaries
+1. Upload one or more GPX files.
+2. Select the stage and enter its official start time.
+3. Choose Turn Assist and optional DZ/FZ settings for that GPX.
+4. Tap **Arm Start**. GPS acquisition, screen wake lock and countdown begin automatically.
+5. At zero, Rally mode starts and displays route odometer, speed, upcoming turn and distance.
 
-- GPX parsing and route data remain on the device; nothing is uploaded.
-- Live GPS snaps the phone position to the nearest point on the selected track.
-- DZ/FZ triggering uses the snapped route position and needs field validation before competition.
-- Elevation calls require `<ele>` values in the GPX.
-- Bend calls are geometry-based previews, not pace notes or a substitute for the organiser's roadbook.
-- Offline map tiles are not included; the route remains visible as an offline vector trace.
+Every GPX retains its own start, turn and DZ/FZ configuration. Existing v0.4 route data is migrated automatically.
+
+## Deploy through GitHub and Vercel
+
+1. Extract the package and upload every file and folder to the repository root.
+2. Commit the changes. Vercel redeploys the connected repository automatically.
+3. No environment variables or custom build settings are required.
+4. After deployment, close every open browser/PWA instance and reopen the installed app once so the v0.5 offline cache activates.
+
+## Testing and safety
+
+- Test with a passenger operating and observing the phone.
+- If a call or distance is wrong, download the run log from **Controls → Diagnostics** and retain the exact GPX used for that run.
+- Generated calls describe GPX geometry only. They cannot identify grip, road surface, traffic, hazards or an incorrect organiser track.
+- Sparse or poorly converted GPX geometry cannot support trustworthy bend calls.
+- The organiser roadbook and safety instructions remain authoritative.
