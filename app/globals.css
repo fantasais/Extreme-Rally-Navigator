@@ -252,6 +252,18 @@ select:disabled {
   font-size: 9px;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.remove-route-action {
+  border-color: #75413b;
+  background: #1c0d0b;
+  color: #ff8c80;
+}
+
 .locked-banner,
 .error-banner,
 .off-route-banner {
@@ -1061,6 +1073,15 @@ footer {
 
   .panel {
     padding: 14px;
+  }
+
+  .panel-actions {
+    gap: 5px;
+  }
+
+  .panel-actions .small-action {
+    padding-inline: 8px;
+    font-size: 8px;
   }
 
   .metric-row {
