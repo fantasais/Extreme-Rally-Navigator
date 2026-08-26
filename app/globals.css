@@ -821,6 +821,155 @@ select:disabled {
   border-color: var(--green);
 }
 
+.hold-end-action {
+  width: 100%;
+  min-height: 50px;
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  border: 1px solid #75413b;
+  border-radius: 8px;
+  background: #1c0d0b;
+  color: #ff8c80;
+  font-family: "Arial Black", Arial, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.07em;
+}
+
+.hold-end-action::before {
+  content: "";
+  width: 0;
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--red);
+}
+
+.hold-end-action.holding::before {
+  width: 100%;
+  transition: width 1.5s linear;
+}
+
+.hold-end-action span {
+  position: relative;
+  z-index: 1;
+}
+
+.hold-end-action.holding {
+  color: white;
+}
+
+.turn-card.unreliable {
+  border-color: var(--red);
+  background: #1b0d0b;
+}
+
+.turn-card.unreliable .turn-arrow {
+  color: var(--red);
+}
+
+.turn-card.unreliable > strong {
+  max-width: 100%;
+  color: var(--red);
+  font-size: clamp(22px, 6vw, 34px);
+  letter-spacing: -0.025em;
+}
+
+.stage-summary-card {
+  padding: 20px 16px;
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.stage-summary-card > span,
+.summary-hero small,
+.summary-grid span {
+  display: block;
+  color: var(--green);
+  font-family: "Arial Black", Arial, sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.stage-summary-card h2 {
+  margin: 6px 0 18px;
+  overflow-wrap: anywhere;
+  font-family: "Arial Black", Arial, sans-serif;
+  font-size: 22px;
+}
+
+.summary-hero {
+  padding: 18px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b0d0b;
+  text-align: center;
+}
+
+.summary-hero strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--green);
+  font-family: "Arial Black", Arial, sans-serif;
+  font-size: clamp(52px, 15vw, 76px);
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+
+.summary-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.summary-grid > div {
+  min-width: 0;
+  padding: 13px 11px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.summary-grid > div:nth-child(2n) {
+  border-right: 0;
+}
+
+.summary-grid > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.summary-grid strong {
+  display: inline-block;
+  margin-top: 5px;
+  color: white;
+  font-family: "Arial Black", Arial, sans-serif;
+  font-size: 28px;
+}
+
+.summary-grid small {
+  margin-left: 5px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.stage-summary-card > p {
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.summary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
 .speed-zone-card.active {
   border-color: var(--red);
   background: #28110e;
@@ -957,6 +1106,15 @@ footer {
   .stage-active .turn-card > strong {
     margin-top: 8px;
     font-size: 54px;
+  }
+
+  .stage-active .turn-card.unreliable > strong {
+    font-size: 22px;
+  }
+
+  .hold-end-action {
+    min-height: 45px;
+    font-size: 10px;
   }
 
   .roadbook-card {
