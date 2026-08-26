@@ -1135,7 +1135,7 @@ export default function NavigatorApp() {
     endHoldTimerRef.current = window.setTimeout(() => {
       endHoldTimerRef.current = null;
       completeStage();
-    }, 1500);
+    }, 1000);
   };
 
   const cancelEndHold = () => {
@@ -1362,7 +1362,7 @@ export default function NavigatorApp() {
     <main className={`app-shell ${stageActive ? "stage-active" : ""}`}>
       <header className="topbar">
         <div className="app-brand">
-          <span>EXTREME RALLY V0.6</span>
+          <span>EXTREME RALLY V0.6.1</span>
           <h1>RALLY NAVIGATOR</h1>
         </div>
         <div className="header-actions">
