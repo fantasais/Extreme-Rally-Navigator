@@ -847,7 +847,7 @@ select:disabled {
 
 .hold-end-action.holding::before {
   width: 100%;
-  transition: width 1.5s linear;
+  transition: width 1s linear;
 }
 
 .hold-end-action span {
