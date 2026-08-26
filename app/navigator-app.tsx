@@ -809,6 +809,26 @@ export default function NavigatorApp() {
     setSetupError("");
   };
 
+  const removeSelectedRoute = () => {
+    if (!selectedRoute || setupLocked) return;
+    const confirmed = window.confirm(
+      `Remove "${selectedRoute.name}" from this device? Its DZ/FZ settings will also be deleted.`,
+    );
+    if (!confirmed) return;
+
+    const remainingRoutes = routes.filter(
+      (route) => route.id !== selectedRoute.id,
+    );
+    setRoutes(remainingRoutes);
+    setConfigs((previous) => {
+      const next = { ...previous };
+      delete next[selectedRoute.id];
+      return next;
+    });
+    setSelectedRouteId(remainingRoutes[0]?.id || "");
+    setSetupError("");
+  };
+
   const stopGps = () => {
     if (watchRef.current !== null) {
       navigator.geolocation.clearWatch(watchRef.current);
@@ -1362,7 +1382,7 @@ export default function NavigatorApp() {
     <main className={`app-shell ${stageActive ? "stage-active" : ""}`}>
       <header className="topbar">
         <div className="app-brand">
-          <span>EXTREME RALLY V0.6.1</span>
+          <span>EXTREME RALLY V0.6.2</span>
           <h1>RALLY NAVIGATOR</h1>
         </div>
         <div className="header-actions">
@@ -1416,13 +1436,22 @@ export default function NavigatorApp() {
                   <span>ROUTE</span>
                   <h2>Stage GPX</h2>
                 </div>
-                <button
-                  className="small-action"
-                  disabled={setupLocked}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  + UPLOAD GPX
-                </button>
+                <div className="panel-actions">
+                  <button
+                    className="small-action remove-route-action"
+                    disabled={!selectedRoute || setupLocked}
+                    onClick={removeSelectedRoute}
+                  >
+                    REMOVE
+                  </button>
+                  <button
+                    className="small-action"
+                    disabled={setupLocked}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    + UPLOAD GPX
+                  </button>
+                </div>
               </div>
 
               {!selectedRoute ? (
