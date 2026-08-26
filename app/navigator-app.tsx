@@ -58,6 +58,10 @@ type RouteProjection = {
   offset: number;
   segment: number;
   segmentBearing: number;
+  nearestRouteDistance: number;
+  nearestOffset: number;
+  nearestSegment: number;
+  nearestSegmentBearing: number;
 };
 type GpsFix = {
   lat: number;
@@ -65,6 +69,7 @@ type GpsFix = {
   timestamp: number;
   routeDistance: number;
   speedMps: number;
+  segment: number;
 };
 type RunLogEntry = {
   timestamp: number;
@@ -76,6 +81,20 @@ type RunLogEntry = {
   routeDistance: number;
   offRouteDistance: number;
   segment: number;
+  continuityOffset: number;
+  nearestRouteDistance: number;
+  rejoined: boolean;
+};
+type StageSummary = {
+  routeName: string;
+  startedAt: number;
+  finishedAt: number;
+  elapsedSeconds: number;
+  actualDistance: number;
+  routeDistance: number;
+  averageSpeedKph: number;
+  topSpeedKph: number;
+  testMode: boolean;
 };
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -137,11 +156,18 @@ function projectPointToRoute(
     previousDistance: number;
     elapsedSeconds: number;
     speedMps: number;
+    accuracy: number;
     heading?: number;
   },
 ): RouteProjection {
   let best: RouteProjection | undefined;
   let bestScore = Infinity;
+  let nearest:
+    | Pick<
+        RouteProjection,
+        "routeDistance" | "offset" | "segment" | "segmentBearing"
+      >
+    | undefined;
 
   for (let segment = 0; segment < points.length - 1; segment += 1) {
     const start = points[segment];
@@ -172,39 +198,65 @@ function projectPointToRoute(
     const segmentBearing = bearing(start, finish);
     let score = separation;
 
+    if (!nearest || separation < nearest.offset) {
+      nearest = { routeDistance, offset: separation, segment, segmentBearing };
+    }
+
     if (continuity) {
       const delta = routeDistance - continuity.previousDistance;
       const plausibleTravel = Math.max(
-        70,
-        continuity.speedMps * continuity.elapsedSeconds * 3 + 45,
+        18,
+        continuity.speedMps * continuity.elapsedSeconds * 1.7 +
+          continuity.accuracy * 1.25 +
+          8,
       );
-      if (delta > plausibleTravel) score += (delta - plausibleTravel) * 0.8;
-      if (delta < -Math.max(45, plausibleTravel * 0.55)) {
-        score += (Math.abs(delta) - plausibleTravel * 0.55) * 1.1;
+      if (delta > plausibleTravel) score += (delta - plausibleTravel) * 3;
+      const allowedReverse = Math.max(12, plausibleTravel * 0.4);
+      if (delta < -allowedReverse) {
+        score += (Math.abs(delta) - allowedReverse) * 4;
       }
       if (
         continuity.heading !== undefined &&
         continuity.speedMps > 2.5
       ) {
         score +=
-          (headingDifference(continuity.heading, segmentBearing) / 180) * 45;
+          (headingDifference(continuity.heading, segmentBearing) / 180) * 60;
       }
     }
 
     if (score < bestScore) {
       bestScore = score;
-      best = { routeDistance, offset: separation, segment, segmentBearing };
+      best = {
+        routeDistance,
+        offset: separation,
+        segment,
+        segmentBearing,
+        nearestRouteDistance: routeDistance,
+        nearestOffset: separation,
+        nearestSegment: segment,
+        nearestSegmentBearing: segmentBearing,
+      };
     }
   }
 
-  return (
-    best || {
+  const fallback = {
       routeDistance: 0,
       offset: Infinity,
       segment: 0,
       segmentBearing: 0,
-    }
-  );
+      nearestRouteDistance: 0,
+      nearestOffset: Infinity,
+      nearestSegment: 0,
+      nearestSegmentBearing: 0,
+  };
+  if (!best || !nearest) return fallback;
+  return {
+    ...best,
+    nearestRouteDistance: nearest.routeDistance,
+    nearestOffset: nearest.offset,
+    nearestSegment: nearest.segment,
+    nearestSegmentBearing: nearest.segmentBearing,
+  };
 }
 
 function pointAtDistance(points: Point[], distance: number): Point {
@@ -518,6 +570,8 @@ export default function NavigatorApp() {
   const [setupError, setSetupError] = useState("");
   const [zoneStartedAt, setZoneStartedAt] = useState<number | null>(null);
   const [zoneElapsed, setZoneElapsed] = useState(0);
+  const [stageSummary, setStageSummary] = useState<StageSummary | null>(null);
+  const [endHoldActive, setEndHoldActive] = useState(false);
   const [installPrompt, setInstallPrompt] =
     useState<InstallPromptEvent | null>(null);
   const [storageReady, setStorageReady] = useState(false);
@@ -527,6 +581,11 @@ export default function NavigatorApp() {
   const gpsFixRef = useRef<GpsFix | null>(null);
   const smoothedSpeedRef = useRef(0);
   const runLogRef = useRef<RunLogEntry[]>([]);
+  const rejoinCandidateRef = useRef({ count: 0, routeDistance: 0 });
+  const actualDistanceRef = useRef(0);
+  const topSpeedRef = useRef(0);
+  const stageStartTimestampRef = useRef(0);
+  const endHoldTimerRef = useRef<number | null>(null);
 
   const selectedRoute =
     routes.find((route) => route.id === selectedRouteId) || routes[0];
@@ -538,7 +597,7 @@ export default function NavigatorApp() {
     : undefined;
   const activeConfig = activeStage?.config;
   const setupLocked = stageStatus !== "idle";
-  const stageActive = stageStatus !== "idle";
+  const stageActive = stageStatus === "armed" || stageStatus === "running";
 
   const selectedTurnCalls = useMemo(
     () =>
@@ -615,6 +674,9 @@ export default function NavigatorApp() {
     () => () => {
       if (watchRef.current !== null) {
         navigator.geolocation.clearWatch(watchRef.current);
+      }
+      if (endHoldTimerRef.current !== null) {
+        window.clearTimeout(endHoldTimerRef.current);
       }
     },
     [],
@@ -705,7 +767,6 @@ export default function NavigatorApp() {
         const finishDistance = activeRoute.points.at(-1)!.distance;
         const step = Math.max(2, finishDistance / 240);
         if (previous + step >= finishDistance) {
-          setStageStatus("finished");
           return finishDistance;
         }
         return previous + step;
@@ -754,6 +815,7 @@ export default function NavigatorApp() {
     }
     watchRef.current = null;
     gpsFixRef.current = null;
+    rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
     smoothedSpeedRef.current = 0;
     setCurrentSpeed(0);
     setGpsStatus("off");
@@ -768,6 +830,7 @@ export default function NavigatorApp() {
     setGpsStatus("acquiring");
     setGpsError("");
     gpsFixRef.current = null;
+    rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
     smoothedSpeedRef.current = 0;
     watchRef.current = navigator.geolocation.watchPosition(
       (position) => {
@@ -810,25 +873,85 @@ export default function NavigatorApp() {
                 previousDistance: previousFix.routeDistance,
                 elapsedSeconds,
                 speedMps: reliableSpeed,
+                accuracy: position.coords.accuracy,
                 heading,
               }
             : undefined,
         );
         let projectedDistance = projection.routeDistance;
+        let projectedSegment = projection.segment;
+        let rejoined = false;
 
         if (previousFix) {
-          const delta = projectedDistance - previousFix.routeDistance;
-          if (reliableSpeed < 1.2 && Math.abs(delta) < 22) {
-            projectedDistance = previousFix.routeDistance;
-          } else if (
-            delta < 0 &&
-            delta > -35 &&
-            reliableSpeed > 2 &&
-            heading !== undefined &&
-            headingDifference(heading, projection.segmentBearing) < 70
+          const rejoinRadius = Math.max(
+            18,
+            Math.min(35, position.coords.accuracy * 2),
+          );
+          const nearestIsForward =
+            projection.nearestRouteDistance >=
+            previousFix.routeDistance - rejoinRadius;
+          const continuityIsStuck =
+            projection.offset >
+              Math.max(45, projection.nearestOffset + 30) &&
+            Math.abs(
+              projection.nearestRouteDistance - previousFix.routeDistance,
+            ) > 60;
+          const nearestHeadingFits =
+            heading === undefined ||
+            reliableSpeed < 2.5 ||
+            headingDifference(heading, projection.nearestSegmentBearing) < 75;
+
+          if (
+            projection.nearestOffset <= rejoinRadius &&
+            nearestIsForward &&
+            continuityIsStuck &&
+            nearestHeadingFits
           ) {
-            projectedDistance = previousFix.routeDistance;
+            const previousCandidate = rejoinCandidateRef.current;
+            const coherent =
+              previousCandidate.count === 0 ||
+              projection.nearestRouteDistance >=
+                previousCandidate.routeDistance - 30;
+            rejoinCandidateRef.current = {
+              count: coherent ? previousCandidate.count + 1 : 1,
+              routeDistance: projection.nearestRouteDistance,
+            };
+          } else {
+            rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
           }
+
+          if (rejoinCandidateRef.current.count >= 3) {
+            projectedDistance = Math.max(
+              previousFix.routeDistance,
+              projection.nearestRouteDistance,
+            );
+            projectedSegment = projection.nearestSegment;
+            rejoined = true;
+            rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
+          } else {
+            const delta = projectedDistance - previousFix.routeDistance;
+            const allowedTravel = Math.max(
+              22,
+              reliableSpeed * elapsedSeconds * 1.8 +
+                position.coords.accuracy * 1.25 +
+                8,
+            );
+            if (delta < 0 || delta > allowedTravel) {
+              projectedDistance = previousFix.routeDistance;
+              projectedSegment = previousFix.segment;
+            } else if (reliableSpeed < 1.2 && Math.abs(delta) < 22) {
+              projectedDistance = previousFix.routeDistance;
+              projectedSegment = previousFix.segment;
+            }
+          }
+        } else {
+          projectedDistance = projection.nearestRouteDistance;
+          projectedSegment = projection.nearestSegment;
+        }
+
+        if (previousFix && projectedDistance < previousFix.routeDistance) {
+            projectedDistance = previousFix.routeDistance;
+            projectedSegment = previousFix.segment;
         }
 
         const smoothing = reliableSpeed < 1 ? 0.18 : 0.38;
@@ -839,26 +962,51 @@ export default function NavigatorApp() {
               reliableSpeed * smoothing;
         if (reliableSpeed < 0.5) smoothedSpeedRef.current = 0;
 
-        runLogRef.current.push({
-          timestamp,
-          ...here,
-          accuracy: position.coords.accuracy,
-          reportedSpeedKph: reliableSpeed * 3.6,
-          displayedSpeedKph: smoothedSpeedRef.current * 3.6,
-          routeDistance: projectedDistance,
-          offRouteDistance: projection.offset,
-          segment: projection.segment,
-        });
-        if (runLogRef.current.length > 20_000) runLogRef.current.shift();
+        const stageHasStarted = timestamp >= stageStartTimestampRef.current;
+        if (
+          stageHasStarted &&
+          previousFix &&
+          previousFix.timestamp >= stageStartTimestampRef.current &&
+          position.coords.accuracy <= 30 &&
+          elapsedSeconds <= 5 &&
+          displacement > movementNoiseFloor &&
+          displacement / elapsedSeconds < 70
+        ) {
+          actualDistanceRef.current += displacement;
+        }
+        if (stageHasStarted && position.coords.accuracy <= 30) {
+          topSpeedRef.current = Math.max(
+            topSpeedRef.current,
+            smoothedSpeedRef.current * 3.6,
+          );
+        }
+
+        if (stageHasStarted) {
+          runLogRef.current.push({
+            timestamp,
+            ...here,
+            accuracy: position.coords.accuracy,
+            reportedSpeedKph: reliableSpeed * 3.6,
+            displayedSpeedKph: smoothedSpeedRef.current * 3.6,
+            routeDistance: projectedDistance,
+            offRouteDistance: projection.nearestOffset,
+            segment: projectedSegment,
+            continuityOffset: projection.offset,
+            nearestRouteDistance: projection.nearestRouteDistance,
+            rejoined,
+          });
+          if (runLogRef.current.length > 20_000) runLogRef.current.shift();
+        }
 
         gpsFixRef.current = {
           ...here,
           timestamp,
           routeDistance: projectedDistance,
           speedMps: reliableSpeed,
+          segment: projectedSegment,
         };
         setProgress(projectedDistance);
-        setOffRouteDistance(projection.offset);
+        setOffRouteDistance(projection.nearestOffset);
         setCurrentSpeed(smoothedSpeedRef.current * 3.6);
         setGpsAccuracy(position.coords.accuracy);
         setGpsStatus("ready");
@@ -928,6 +1076,11 @@ export default function NavigatorApp() {
     setOffRouteDistance(0);
     setZoneElapsed(0);
     setZoneStartedAt(null);
+    setStageSummary(null);
+    actualDistanceRef.current = 0;
+    topSpeedRef.current = 0;
+    stageStartTimestampRef.current = startTimestamp;
+    rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
     runLogRef.current = [];
     setNow(Date.now());
     setStageStatus(mode === "armed" ? "armed" : "running");
@@ -935,14 +1088,62 @@ export default function NavigatorApp() {
     if (mode !== "test") startGps(selectedRoute);
   };
 
-  const endStage = () => {
+  const completeStage = () => {
+    if (!activeStage || !activeRoute || stageStatus === "finished") return;
+    const finishedAt = Date.now();
+    const elapsedSeconds = Math.max(
+      0,
+      (finishedAt - activeStage.startTimestamp) / 1000,
+    );
+    const actualDistance = activeStage.testMode
+      ? progress
+      : actualDistanceRef.current;
+    stopGps();
+    setNow(finishedAt);
+    setStageSummary({
+      routeName: activeRoute.name,
+      startedAt: activeStage.startTimestamp,
+      finishedAt,
+      elapsedSeconds,
+      actualDistance,
+      routeDistance: progress,
+      averageSpeedKph:
+        elapsedSeconds > 0 ? (actualDistance / elapsedSeconds) * 3.6 : 0,
+      topSpeedKph: activeStage.testMode ? 0 : topSpeedRef.current,
+      testMode: activeStage.testMode,
+    });
+    setStageStatus("finished");
+    setZoneStartedAt(null);
+    setEndHoldActive(false);
+  };
+
+  const resetForNewLeg = () => {
     stopGps();
     setActiveStage(null);
+    setStageSummary(null);
     setStageStatus("idle");
     setProgress(0);
+    setOffRouteDistance(0);
     setZoneElapsed(0);
     setZoneStartedAt(null);
     setTab("setup");
+  };
+
+  const beginEndHold = () => {
+    if (stageStatus !== "running" || endHoldTimerRef.current !== null) return;
+    setEndHoldActive(true);
+    endHoldTimerRef.current = window.setTimeout(() => {
+      endHoldTimerRef.current = null;
+      completeStage();
+    }, 1500);
+  };
+
+  const cancelEndHold = () => {
+    if (endHoldTimerRef.current !== null) {
+      window.clearTimeout(endHoldTimerRef.current);
+      endHoldTimerRef.current = null;
+    }
+    setEndHoldActive(false);
   };
 
   const installApp = async () => {
@@ -964,6 +1165,9 @@ export default function NavigatorApp() {
       "route_odo_km",
       "off_route_m",
       "segment",
+      "continuity_offset_m",
+      "nearest_route_odo_km",
+      "rejoined",
     ].join(",");
     const rows = runLogRef.current.map((entry) =>
       [
@@ -976,6 +1180,9 @@ export default function NavigatorApp() {
         (entry.routeDistance / 1000).toFixed(4),
         entry.offRouteDistance.toFixed(1),
         entry.segment,
+        entry.continuityOffset.toFixed(1),
+        (entry.nearestRouteDistance / 1000).toFixed(4),
+        entry.rejoined ? "yes" : "no",
       ].join(","),
     );
     const blob = new Blob([[header, ...rows].join("\n")], {
@@ -1014,6 +1221,8 @@ export default function NavigatorApp() {
     activeRoute?.instructions[currentInstructionIndex];
   const nextInstruction =
     activeRoute?.instructions[currentInstructionIndex + 1];
+  const routePositionReliable =
+    Boolean(activeStage?.testMode) || offRouteDistance <= 50;
 
   const activeZone = activeConfig?.zone;
   const zoneStart = activeRoute?.instructions.find(
@@ -1153,7 +1362,7 @@ export default function NavigatorApp() {
     <main className={`app-shell ${stageActive ? "stage-active" : ""}`}>
       <header className="topbar">
         <div className="app-brand">
-          <span>EXTREME RALLY V0.5.1</span>
+          <span>EXTREME RALLY V0.6</span>
           <h1>RALLY NAVIGATOR</h1>
         </div>
         <div className="header-actions">
@@ -1553,8 +1762,7 @@ export default function NavigatorApp() {
               </>
             )}
 
-            {(stageStatus === "running" ||
-              stageStatus === "finished") &&
+            {stageStatus === "running" &&
               activeStage &&
               activeRoute && (
                 <>
@@ -1604,19 +1812,25 @@ export default function NavigatorApp() {
                     </div>
                   </section>
 
-                  <section className="turn-card">
+                  <section
+                    className={`turn-card ${
+                      routePositionReliable ? "" : "unreliable"
+                    }`}
+                  >
                     <span>UPCOMING TURN</span>
-                    <div className="turn-arrow">{turnArrow}</div>
+                    <div className="turn-arrow">
+                      {routePositionReliable ? turnArrow : "!"}
+                    </div>
                     <h2>
-                      {stageStatus === "finished"
-                        ? "FINISH"
+                      {!routePositionReliable
+                        ? "RETURN TO GPX"
                         : upcomingTurn
                           ? `${upcomingTurn.severity} ${upcomingTurn.direction}`
                           : "NO SIGNIFICANT TURN"}
                     </h2>
                     <strong>
-                      {stageStatus === "finished"
-                        ? "—"
+                      {!routePositionReliable
+                        ? "DISTANCE UNRELIABLE"
                         : upcomingTurn
                           ? formatDistance(
                               upcomingTurn.distance - routeDistance,
@@ -1652,9 +1866,11 @@ export default function NavigatorApp() {
                           "Use physical roadbook"}
                       </p>
                       <b>
-                        {formatDistance(
-                          nextInstruction.distance - routeDistance,
-                        )}
+                        {routePositionReliable
+                          ? formatDistance(
+                              nextInstruction.distance - routeDistance,
+                            )
+                          : "UNRELIABLE"}
                       </b>
                     </section>
                   )}
@@ -1678,8 +1894,87 @@ export default function NavigatorApp() {
                       </div>
                     </section>
                   )}
+
+                  <button
+                    className={`hold-end-action ${
+                      endHoldActive ? "holding" : ""
+                    }`}
+                    onPointerDown={beginEndHold}
+                    onPointerUp={cancelEndHold}
+                    onPointerLeave={cancelEndHold}
+                    onPointerCancel={cancelEndHold}
+                    onContextMenu={(event) => event.preventDefault()}
+                  >
+                    <span>
+                      {endHoldActive
+                        ? "KEEP HOLDING…"
+                        : "HOLD TO END STAGE"}
+                    </span>
+                  </button>
                 </>
               )}
+
+            {stageStatus === "finished" && stageSummary && (
+              <section className="stage-summary-card">
+                <span>STAGE COMPLETE</span>
+                <h2>{stageSummary.routeName}</h2>
+                <div className="summary-hero">
+                  <small>STAGE TIME</small>
+                  <strong>{formatDuration(stageSummary.elapsedSeconds)}</strong>
+                </div>
+                <div className="summary-grid">
+                  <div>
+                    <span>ACTUAL DISTANCE</span>
+                    <strong>
+                      {(stageSummary.actualDistance / 1000).toFixed(2)}
+                    </strong>
+                    <small>km</small>
+                  </div>
+                  <div>
+                    <span>AVERAGE SPEED</span>
+                    <strong>{stageSummary.averageSpeedKph.toFixed(1)}</strong>
+                    <small>km/h</small>
+                  </div>
+                  <div>
+                    <span>TOP SPEED</span>
+                    <strong>
+                      {stageSummary.testMode
+                        ? "—"
+                        : Math.round(stageSummary.topSpeedKph)}
+                    </strong>
+                    <small>{stageSummary.testMode ? "SIM" : "km/h"}</small>
+                  </div>
+                  <div>
+                    <span>ROUTE ODO</span>
+                    <strong>
+                      {(stageSummary.routeDistance / 1000).toFixed(2)}
+                    </strong>
+                    <small>km</small>
+                  </div>
+                </div>
+                <p>
+                  {new Date(stageSummary.startedAt).toLocaleTimeString([], {
+                    hour12: false,
+                  })}
+                  {" → "}
+                  {new Date(stageSummary.finishedAt).toLocaleTimeString([], {
+                    hour12: false,
+                  })}
+                </p>
+                <div className="summary-actions">
+                  <button
+                    className="full-secondary"
+                    disabled={!runLogRef.current.length}
+                    onClick={downloadRunLog}
+                  >
+                    DOWNLOAD RUN LOG
+                  </button>
+                  <button className="primary-action" onClick={resetForNewLeg}>
+                    NEW LEG
+                  </button>
+                </div>
+              </section>
+            )}
           </div>
         )}
 
@@ -1735,12 +2030,14 @@ export default function NavigatorApp() {
                   <div className="two-actions">
                     <button
                       className="secondary-action"
+                      disabled={stageStatus !== "running"}
                       onClick={() => jumpInstruction(-1)}
                     >
                       ← PREVIOUS
                     </button>
                     <button
                       className="secondary-action"
+                      disabled={stageStatus !== "running"}
                       onClick={() => jumpInstruction(1)}
                     >
                       NEXT →
@@ -1793,7 +2090,8 @@ export default function NavigatorApp() {
               <button
                 className="full-secondary"
                 disabled={
-                  stageStatus !== "idle" || !runLogRef.current.length
+                  (stageStatus === "armed" || stageStatus === "running") ||
+                  !runLogRef.current.length
                 }
                 onClick={downloadRunLog}
               >
@@ -1810,10 +2108,14 @@ export default function NavigatorApp() {
               </div>
               <button
                 className="danger-action"
-                disabled={stageStatus === "idle"}
-                onClick={endStage}
+                disabled={stageStatus === "idle" || stageStatus === "running"}
+                onClick={resetForNewLeg}
               >
-                END AND RESET STAGE
+                {stageStatus === "finished"
+                  ? "NEW LEG"
+                  : stageStatus === "armed"
+                    ? "CANCEL ARMED START"
+                    : "END STAGE FROM RALLY TAB"}
               </button>
             </section>
           </div>
@@ -1827,3 +2129,4 @@ export default function NavigatorApp() {
     </main>
   );
 }
+
