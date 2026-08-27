@@ -30,7 +30,6 @@ type Zone = {
 };
 type RouteConfig = {
   officialStart: string;
-  sensitivity: "minimal" | "balanced" | "detailed";
   zone: Zone;
 };
 type TurnCall = {
@@ -38,6 +37,12 @@ type TurnCall = {
   direction: "LEFT" | "RIGHT";
   severity: "GENTLE" | "MEDIUM" | "SHARP" | "HAIRPIN";
   angle: number;
+  source: "TRACK" | "WAYPOINT";
+};
+type RecoveryGuidance = {
+  label: string;
+  arrow: string;
+  bearing: number;
 };
 type ActiveStage = {
   routeId: string;
@@ -84,6 +89,11 @@ type RunLogEntry = {
   continuityOffset: number;
   nearestRouteDistance: number;
   rejoined: boolean;
+  upcomingTurn: string;
+  turnDistance: number | null;
+  nextInstruction: string;
+  instructionDistance: number | null;
+  recoveryDirection: string;
 };
 type StageSummary = {
   routeName: string;
@@ -124,7 +134,10 @@ const haversine = (
   );
 };
 
-const bearing = (a: Point, b: Point) => {
+const bearing = (
+  a: Pick<Point, "lat" | "lon">,
+  b: Pick<Point, "lat" | "lon">,
+) => {
   const p1 = (a.lat * Math.PI) / 180;
   const p2 = (b.lat * Math.PI) / 180;
   const deltaLon = ((b.lon - a.lon) * Math.PI) / 180;
@@ -145,6 +158,47 @@ const signedAngle = (from: number, to: number) =>
 
 const headingDifference = (a: number, b: number) =>
   Math.abs(signedAngle(a, b));
+
+function recoveryFromHeading(
+  heading: number | undefined,
+  recoveryBearing: number,
+): RecoveryGuidance {
+  if (heading === undefined) {
+    return {
+      label: `TRACK BEARING ${Math.round(recoveryBearing)}°`,
+      arrow: "◎",
+      bearing: recoveryBearing,
+    };
+  }
+  const relative = signedAngle(heading, recoveryBearing);
+  const magnitude = Math.abs(relative);
+  const side = relative < 0 ? "LEFT" : "RIGHT";
+  if (magnitude <= 22.5) {
+    return { label: "TRACK AHEAD", arrow: "↑", bearing: recoveryBearing };
+  }
+  if (magnitude <= 67.5) {
+    return {
+      label: `TRACK AHEAD ${side}`,
+      arrow: relative < 0 ? "↖" : "↗",
+      bearing: recoveryBearing,
+    };
+  }
+  if (magnitude <= 112.5) {
+    return {
+      label: `TRACK ${side}`,
+      arrow: relative < 0 ? "←" : "→",
+      bearing: recoveryBearing,
+    };
+  }
+  if (magnitude <= 157.5) {
+    return {
+      label: `TRACK BEHIND ${side}`,
+      arrow: relative < 0 ? "↙" : "↘",
+      bearing: recoveryBearing,
+    };
+  }
+  return { label: "TRACK BEHIND", arrow: "↓", bearing: recoveryBearing };
+}
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.max(minimum, Math.min(maximum, value));
@@ -413,7 +467,6 @@ function defaultConfig(route: Route): RouteConfig {
   );
   return {
     officialStart: defaultStart(),
-    sensitivity: "balanced",
     zone: {
       start: dz?.id || "",
       finish: fz?.id || "",
@@ -433,21 +486,26 @@ function pointIndexAtDistance(points: Point[], distance: number) {
   return low;
 }
 
-function buildTurnCalls(
-  route: Route,
-  sensitivity: RouteConfig["sensitivity"],
-): TurnCall[] {
-  const threshold =
-    sensitivity === "detailed" ? 18 : sensitivity === "minimal" ? 48 : 30;
+function turnSeverity(magnitude: number): TurnCall["severity"] {
+  return magnitude >= 110
+    ? "HAIRPIN"
+    : magnitude >= 65
+      ? "SHARP"
+      : magnitude >= 35
+        ? "MEDIUM"
+        : "GENTLE";
+}
+
+function buildTurnCalls(route: Route): TurnCall[] {
+  const threshold = 12;
   const totalDistance = route.points.at(-1)!.distance;
-  const window =
-    sensitivity === "detailed" ? 32 : sensitivity === "minimal" ? 60 : 45;
+  const window = 24;
   const candidates: TurnCall[] = [];
 
   for (
     let sampleDistance = window;
     sampleDistance < totalDistance - window;
-    sampleDistance += 10
+    sampleDistance += 6
   ) {
     const before = pointAtDistance(route.points, sampleDistance - window);
     const centre = pointAtDistance(route.points, sampleDistance);
@@ -469,17 +527,35 @@ function buildTurnCalls(
     candidates.push({
       distance: sampleDistance,
       direction: turn > 0 ? "RIGHT" : "LEFT",
-      severity:
-        magnitude >= 110
-          ? "HAIRPIN"
-          : magnitude >= 65
-            ? "SHARP"
-            : magnitude >= 35
-              ? "MEDIUM"
-              : "GENTLE",
+      severity: turnSeverity(magnitude),
       angle: magnitude,
+      source: "TRACK",
     });
   }
+
+  route.instructions.forEach((instruction) => {
+    if (instruction.distance < 25 || instruction.distance > totalDistance - 25) {
+      return;
+    }
+    const before = pointAtDistance(route.points, instruction.distance - 45);
+    const centre = pointAtDistance(route.points, instruction.distance);
+    const after = pointAtDistance(route.points, instruction.distance + 45);
+    const turn = signedAngle(
+      bearing(before, centre),
+      bearing(centre, after),
+    );
+    const magnitude = Math.abs(turn);
+    if (magnitude < threshold) return;
+    candidates.push({
+      distance: instruction.distance,
+      direction: turn > 0 ? "RIGHT" : "LEFT",
+      severity: turnSeverity(magnitude),
+      angle: magnitude,
+      source: "WAYPOINT",
+    });
+  });
+
+  candidates.sort((a, b) => a.distance - b.distance);
 
   const merged: TurnCall[] = [];
   candidates.forEach((candidate) => {
@@ -487,11 +563,15 @@ function buildTurnCalls(
     if (
       previous &&
       previous.direction === candidate.direction &&
-      candidate.distance - previous.distance < Math.max(75, window * 1.8)
+      candidate.distance - previous.distance < 48
     ) {
       if (candidate.angle > previous.angle) {
         previous.angle = candidate.angle;
         previous.severity = candidate.severity;
+      }
+      if (candidate.source === "WAYPOINT") {
+        previous.distance = candidate.distance;
+        previous.source = "WAYPOINT";
       }
       return;
     }
@@ -500,7 +580,10 @@ function buildTurnCalls(
 
   return merged.map((turn) => ({
     ...turn,
-    distance: Math.min(totalDistance, turn.distance + window * 0.85),
+    distance:
+      turn.source === "WAYPOINT"
+        ? turn.distance
+        : Math.min(totalDistance, turn.distance + window * 0.8),
   }));
 }
 
@@ -566,6 +649,8 @@ export default function NavigatorApp() {
   const [currentSpeed, setCurrentSpeed] = useState(0);
   const [gpsError, setGpsError] = useState("");
   const [offRouteDistance, setOffRouteDistance] = useState(0);
+  const [recoveryGuidance, setRecoveryGuidance] =
+    useState<RecoveryGuidance | null>(null);
   const [wakeStatus, setWakeStatus] = useState<WakeStatus>("off");
   const [setupError, setSetupError] = useState("");
   const [zoneStartedAt, setZoneStartedAt] = useState<number | null>(null);
@@ -600,18 +685,12 @@ export default function NavigatorApp() {
   const stageActive = stageStatus === "armed" || stageStatus === "running";
 
   const selectedTurnCalls = useMemo(
-    () =>
-      selectedRoute && selectedConfig
-        ? buildTurnCalls(selectedRoute, selectedConfig.sensitivity)
-        : [],
-    [selectedRoute, selectedConfig],
+    () => (selectedRoute ? buildTurnCalls(selectedRoute) : []),
+    [selectedRoute],
   );
   const activeTurnCalls = useMemo(
-    () =>
-      activeRoute && activeConfig
-        ? buildTurnCalls(activeRoute, activeConfig.sensitivity)
-        : [],
-    [activeRoute, activeConfig],
+    () => (activeRoute ? buildTurnCalls(activeRoute) : []),
+    [activeRoute],
   );
 
   useEffect(() => {
@@ -838,6 +917,7 @@ export default function NavigatorApp() {
     rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
     smoothedSpeedRef.current = 0;
     setCurrentSpeed(0);
+    setRecoveryGuidance(null);
     setGpsStatus("off");
   };
 
@@ -852,6 +932,7 @@ export default function NavigatorApp() {
     gpsFixRef.current = null;
     rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
     smoothedSpeedRef.current = 0;
+    const liveTurnCalls = buildTurnCalls(route);
     watchRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const here = {
@@ -880,11 +961,16 @@ export default function NavigatorApp() {
             ? Math.max(0, reportedSpeed)
             : calculatedSpeed;
         const reliableSpeed = clamp(rawSpeed, 0, 70);
-        const heading =
+        const reportedHeading =
           position.coords.heading !== null &&
           Number.isFinite(position.coords.heading)
             ? position.coords.heading
             : undefined;
+        const movementHeading =
+          previousFix && displacement > movementNoiseFloor
+            ? bearing(previousFix, here)
+            : undefined;
+        const heading = reportedHeading ?? movementHeading;
         const projection = projectPointToRoute(
           route.points,
           here,
@@ -901,6 +987,12 @@ export default function NavigatorApp() {
         let projectedDistance = projection.routeDistance;
         let projectedSegment = projection.segment;
         let rejoined = false;
+        const nearestPoint = pointAtDistance(
+          route.points,
+          projection.nearestRouteDistance,
+        );
+        const recoveryBearing = bearing(here, nearestPoint);
+        const guidance = recoveryFromHeading(heading, recoveryBearing);
 
         if (previousFix) {
           const rejoinRadius = Math.max(
@@ -1001,6 +1093,13 @@ export default function NavigatorApp() {
           );
         }
 
+        const loggedTurn = liveTurnCalls.find(
+          (turn) => turn.distance > projectedDistance + 8,
+        );
+        const loggedInstruction = route.instructions.find(
+          (instruction) => instruction.distance > projectedDistance + 5,
+        );
+
         if (stageHasStarted) {
           runLogRef.current.push({
             timestamp,
@@ -1014,6 +1113,18 @@ export default function NavigatorApp() {
             continuityOffset: projection.offset,
             nearestRouteDistance: projection.nearestRouteDistance,
             rejoined,
+            upcomingTurn: loggedTurn
+              ? `${loggedTurn.severity} ${loggedTurn.direction}`
+              : "",
+            turnDistance: loggedTurn
+              ? loggedTurn.distance - projectedDistance
+              : null,
+            nextInstruction: loggedInstruction?.label || "",
+            instructionDistance: loggedInstruction
+              ? loggedInstruction.distance - projectedDistance
+              : null,
+            recoveryDirection:
+              projection.nearestOffset > 50 ? guidance.label : "",
           });
           if (runLogRef.current.length > 20_000) runLogRef.current.shift();
         }
@@ -1027,6 +1138,7 @@ export default function NavigatorApp() {
         };
         setProgress(projectedDistance);
         setOffRouteDistance(projection.nearestOffset);
+        setRecoveryGuidance(guidance);
         setCurrentSpeed(smoothedSpeedRef.current * 3.6);
         setGpsAccuracy(position.coords.accuracy);
         setGpsStatus("ready");
@@ -1094,6 +1206,7 @@ export default function NavigatorApp() {
     });
     setProgress(0);
     setOffRouteDistance(0);
+    setRecoveryGuidance(null);
     setZoneElapsed(0);
     setZoneStartedAt(null);
     setStageSummary(null);
@@ -1144,6 +1257,7 @@ export default function NavigatorApp() {
     setStageStatus("idle");
     setProgress(0);
     setOffRouteDistance(0);
+    setRecoveryGuidance(null);
     setZoneElapsed(0);
     setZoneStartedAt(null);
     setTab("setup");
@@ -1188,6 +1302,11 @@ export default function NavigatorApp() {
       "continuity_offset_m",
       "nearest_route_odo_km",
       "rejoined",
+      "upcoming_turn",
+      "turn_distance_m",
+      "next_instruction",
+      "instruction_distance_m",
+      "recovery_direction",
     ].join(",");
     const rows = runLogRef.current.map((entry) =>
       [
@@ -1203,6 +1322,13 @@ export default function NavigatorApp() {
         entry.continuityOffset.toFixed(1),
         (entry.nearestRouteDistance / 1000).toFixed(4),
         entry.rejoined ? "yes" : "no",
+        entry.upcomingTurn,
+        entry.turnDistance === null ? "" : entry.turnDistance.toFixed(1),
+        `"${entry.nextInstruction.replaceAll('"', '""')}"`,
+        entry.instructionDistance === null
+          ? ""
+          : entry.instructionDistance.toFixed(1),
+        entry.recoveryDirection,
       ].join(","),
     );
     const blob = new Blob([[header, ...rows].join("\n")], {
@@ -1382,7 +1508,7 @@ export default function NavigatorApp() {
     <main className={`app-shell ${stageActive ? "stage-active" : ""}`}>
       <header className="topbar">
         <div className="app-brand">
-          <span>EXTREME RALLY V0.6.2</span>
+          <span>EXTREME RALLY V0.7</span>
           <h1>RALLY NAVIGATOR</h1>
         </div>
         <div className="header-actions">
@@ -1555,41 +1681,6 @@ export default function NavigatorApp() {
               <p className="helper-copy left">
                 Arm acquires GPS immediately, counts down to the official time
                 and starts automatically at zero.
-              </p>
-            </section>
-
-            <section className="panel">
-              <div className="panel-heading">
-                <div>
-                  <span>TURN ASSIST</span>
-                  <h2>Generated route calls</h2>
-                </div>
-              </div>
-
-              <div className="choice-row">
-                {(["minimal", "balanced", "detailed"] as const).map(
-                  (choice) => (
-                    <button
-                      key={choice}
-                      disabled={!selectedConfig || setupLocked}
-                      className={
-                        selectedConfig?.sensitivity === choice ? "active" : ""
-                      }
-                      onClick={() =>
-                        updateSelectedConfig((current) => ({
-                          ...current,
-                          sensitivity: choice,
-                        }))
-                      }
-                    >
-                      {choice.toUpperCase()}
-                    </button>
-                  ),
-                )}
-              </div>
-              <p className="helper-copy left">
-                Balanced calls meaningful bends without constant chatter.
-                Minimal keeps only major direction changes.
               </p>
             </section>
 
@@ -1846,26 +1937,35 @@ export default function NavigatorApp() {
                       routePositionReliable ? "" : "unreliable"
                     }`}
                   >
-                    <span>UPCOMING TURN</span>
+                    <span>
+                      {routePositionReliable ? "UPCOMING TURN" : "RECOVERY"}
+                    </span>
                     <div className="turn-arrow">
-                      {routePositionReliable ? turnArrow : "!"}
+                      {routePositionReliable
+                        ? turnArrow
+                        : recoveryGuidance?.arrow || "◎"}
                     </div>
                     <h2>
                       {!routePositionReliable
-                        ? "RETURN TO GPX"
+                        ? recoveryGuidance?.label || "DIRECTION ACQUIRING"
                         : upcomingTurn
                           ? `${upcomingTurn.severity} ${upcomingTurn.direction}`
                           : "NO SIGNIFICANT TURN"}
                     </h2>
                     <strong>
                       {!routePositionReliable
-                        ? "DISTANCE UNRELIABLE"
+                        ? `${formatDistance(offRouteDistance)} TO GPX`
                         : upcomingTurn
                           ? formatDistance(
                               upcomingTurn.distance - routeDistance,
                             )
                           : "—"}
                     </strong>
+                    {!routePositionReliable && (
+                      <small className="recovery-note">
+                        STRAIGHT-LINE BEARING · CHOOSE A SAFE RECOVERY PATH
+                      </small>
+                    )}
                   </section>
 
                   <section className="next-card">
