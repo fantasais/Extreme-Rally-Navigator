@@ -887,6 +887,16 @@ select:disabled {
   letter-spacing: -0.025em;
 }
 
+.recovery-note {
+  max-width: 340px;
+  margin-top: 15px;
+  color: #c48b84;
+  font-family: "Arial Black", Arial, sans-serif;
+  font-size: 8px;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+}
+
 .stage-summary-card {
   padding: 20px 16px;
   border: 1px solid var(--green);
