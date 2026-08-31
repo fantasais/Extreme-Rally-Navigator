@@ -358,7 +358,8 @@ select:disabled {
   grid-template-columns: repeat(3, 1fr);
   border: 1px solid var(--line);
   border-radius: 7px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto; /* Last-resort accessibility: never hide End Stage on tiny/zoomed screens. */
 }
 
 .metric-row div {
@@ -1346,12 +1347,23 @@ footer {
 .stage-active {
   height: 100dvh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .stage-active .screen {
-  height: calc(100dvh - 99px);
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
   overflow: hidden;
 }
+
+.stage-active .topbar,
+.stage-active .nav-tabs { flex: 0 0 auto; }
+.stage-active footer { display: none; }
+.stage-active .zone-state strong { overflow-wrap: anywhere; }
+.speed-zone-card.zone-announcement { outline: 3px solid var(--amber); outline-offset: -3px; }
+.speed-zone-card.complete.zone-announcement { outline-color: var(--green); }
 
 .stage-active .screen-stack {
   height: 100%;
@@ -1387,7 +1399,6 @@ footer {
   }
 
   .stage-active .screen {
-    height: calc(100dvh - 81px);
     padding: 6px 8px 7px;
   }
 
@@ -1418,15 +1429,37 @@ footer {
   }
 
   .stage-active .turn-arrow {
-    height: 58px;
+    height: auto;
+    grid-column: 1;
+    grid-row: 2 / 4;
     font-size: 65px;
   }
 
+  .stage-active .turn-card {
+    display: grid;
+    grid-template-columns: 65px minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+    align-content: center;
+    align-items: center;
+    gap: 2px 6px;
+    padding: 7px 10px;
+    min-height: 122px;
+  }
+
+  .stage-active .turn-card > span { grid-column: 1 / -1; }
+  .stage-active .turn-card > small { grid-column: 1 / -1; }
+
   .stage-active .turn-card h2 {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
     font-size: 25px;
   }
 
   .stage-active .turn-card > strong {
+    grid-column: 2;
+    grid-row: 3;
+    margin: 0;
     font-size: 46px;
   }
 
@@ -1446,14 +1479,28 @@ footer {
     display: none;
   }
 
-  .stage-active .screen {
-    height: calc(100dvh - 36px);
-  }
-
   .stage-active .call-ahead-note,
   .stage-active .recovery-note {
     display: none;
   }
+
+  .stage-active .drive-readout > div { padding: 5px 8px; }
+  .stage-active .drive-readout strong { font-size: 34px; }
+  .stage-active .readout-meta { margin-top: 3px; padding-top: 3px; }
+  .stage-active .readout-meta b { font-size: 12px; }
+  .stage-active .readout-meta span { font-size: 7px; }
+  .stage-active .speed-zone-card { padding: 5px 8px; min-height: 54px; }
+  .stage-active .zone-state strong { font-size: 11px; }
+  .stage-active .zone-clock strong { font-size: 18px; }
+  .stage-active .zone-clock strong small { display: none; }
+  .stage-active .next-card, .stage-active .roadbook-card {
+    min-height: 36px;
+    padding: 4px 8px;
+  }
+  .stage-active .turn-card { min-height: 110px; }
+  .stage-active .turn-card h2 { font-size: 22px; }
+  .stage-active .turn-card > strong { font-size: 40px; }
+  .stage-active .turn-card.adjusting > strong { font-size: 21px; }
 
   .zone-alert-overlay {
     min-height: 190px;
