@@ -7,6 +7,10 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  advanceNavigation, createNavigationState, displayProgress, eventFinished,
+  zoneFromEvents, type NavigationEvent, type NavigationState,
+} from "./navigation-events";
 
 type Point = { lat: number; lon: number; ele?: number; distance: number };
 type Instruction = {
@@ -40,6 +44,8 @@ type TurnCall = {
   source: "TRACK" | "WAYPOINT";
   startDistance: number;
   endDistance: number;
+  passDistance?: number;
+  sparseGeometry?: boolean;
 };
 type RecoveryGuidance = {
   label: string;
@@ -62,6 +68,7 @@ type WakeLockSentinelLike = EventTarget & {
   release: () => Promise<void>;
 };
 type RouteProjection = {
+  ambiguous?: boolean;
   routeDistance: number;
   offset: number;
   segment: number;
@@ -104,6 +111,9 @@ type RunLogEntry = {
   nextInstruction: string;
   instructionDistance: number | null;
   recoveryDirection: string;
+  eventTransitions: string;
+  eventReady: boolean;
+  upcomingTurnPhase: string;
 };
 type StageSummary = {
   routeName: string;
@@ -126,9 +136,7 @@ const STORAGE_KEY = "xr-navigator-v0.5-routes";
 const EARTH_RADIUS = 6_371_000;
 const GENERIC_NOTE = "Roadbook instruction";
 const OFF_ROUTE_DISTANCE = 50;
-const TURN_PASS_MARGIN = 2;
 const COMBINATION_DISTANCE = 120;
-const GPS_PREDICTION_LIMIT_SECONDS = 1.1;
 
 const haversine = (
   a: Pick<Point, "lat" | "lon">,
@@ -230,6 +238,7 @@ function projectPointToRoute(
 ): RouteProjection {
   let best: RouteProjection | undefined;
   let bestScore = Infinity;
+  const alternatives: { distance: number; score: number }[] = [];
   let nearest:
     | Pick<
         RouteProjection,
@@ -292,6 +301,7 @@ function projectPointToRoute(
       }
     }
 
+    alternatives.push({ distance: routeDistance, score });
     if (score < bestScore) {
       bestScore = score;
       best = {
@@ -320,6 +330,9 @@ function projectPointToRoute(
   if (!best || !nearest) return fallback;
   return {
     ...best,
+    ambiguous: alternatives.some((candidate) =>
+      Math.abs(candidate.distance - best!.routeDistance) > Math.max(40, (continuity?.accuracy || 10) * 4) &&
+      candidate.score <= bestScore + 8),
     nearestRouteDistance: nearest.routeDistance,
     nearestOffset: nearest.offset,
     nearestSegment: nearest.segment,
@@ -567,7 +580,7 @@ function buildTurnCalls(route: Route): TurnCall[] {
     if (
       previous &&
       previous.direction === candidate.direction &&
-      candidate.distance - previous.endDistance <= 72
+      candidate.distance - previous.endDistance <= 18
     ) {
       previous.endDistance = candidate.distance;
       if (candidate.angle > previous.angle) {
@@ -605,7 +618,7 @@ function buildTurnCalls(route: Route): TurnCall[] {
     if (
       previous &&
       previous.direction === candidate.direction &&
-      candidate.startDistance - previous.endDistance <= 105
+      candidate.startDistance - previous.endDistance <= 18
     ) {
       previous.endDistance = candidate.endDistance;
       if (candidate.angle > previous.angle) {
@@ -643,6 +656,7 @@ function buildTurnCalls(route: Route): TurnCall[] {
       return {
         ...run,
         distance: Math.max(0, run.startDistance - window * 0.5),
+        passDistance: run.distance,
         direction: run.direction,
         angle: magnitude,
         severity: turnSeverity(magnitude),
@@ -672,6 +686,11 @@ function buildTurnCalls(route: Route): TurnCall[] {
       source: "WAYPOINT",
       startDistance: instruction.distance,
       endDistance: instruction.distance,
+      passDistance: instruction.distance,
+      sparseGeometry: Math.max(
+        sourceGapAtDistance(route.points, instruction.distance - 20),
+        sourceGapAtDistance(route.points, instruction.distance + 20),
+      ) > 140,
     });
   });
 
@@ -685,7 +704,7 @@ function buildTurnCalls(route: Route): TurnCall[] {
     if (
       previous &&
       previous.direction === candidate.direction &&
-      candidate.distance - previous.endDistance < 90
+      candidate.startDistance <= previous.endDistance + 18
     ) {
       previous.startDistance = Math.min(
         previous.startDistance,
@@ -701,8 +720,10 @@ function buildTurnCalls(route: Route): TurnCall[] {
       }
       if (candidate.source === "WAYPOINT") {
         previous.distance = candidate.distance;
+        previous.passDistance = candidate.passDistance;
         previous.source = "WAYPOINT";
       }
+      previous.sparseGeometry = previous.sparseGeometry || candidate.sparseGeometry;
       return;
     }
 
@@ -722,7 +743,24 @@ function buildTurnCalls(route: Route): TurnCall[] {
     merged.push({ ...candidate });
   });
 
-  return merged;
+  return merged.sort((a, b) => a.distance - b.distance);
+}
+
+function navigationEvents(route: Route, turns: TurnCall[], zone?: Zone): NavigationEvent[] {
+  const events: NavigationEvent[] = turns.map((turn, index) => ({
+    id: `turn:${index}`, kind: "TURN", distance: turn.distance,
+    passDistance: turn.passDistance ?? turn.distance, lead: turnLeadDistance(turn),
+  }));
+  for (const instruction of route.instructions) {
+    events.push({ id: `instruction:${instruction.id}`, kind: "INSTRUCTION",
+      distance: instruction.distance, passDistance: instruction.distance, lead: 150 });
+    if (instruction.id === zone?.start || instruction.id === zone?.finish) {
+      const kind = instruction.id === zone.start ? "DZ" : "FZ";
+      events.push({ id: kind === "DZ" ? "zone:dz" : "zone:fz", kind,
+        distance: instruction.distance, passDistance: instruction.distance, lead: 500 });
+    }
+  }
+  return events.sort((a, b) => a.distance - b.distance);
 }
 
 function RoutePreview({ route }: { route: Route }) {
@@ -793,8 +831,9 @@ export default function NavigatorApp() {
     useState<RecoveryGuidance | null>(null);
   const [wakeStatus, setWakeStatus] = useState<WakeStatus>("off");
   const [setupError, setSetupError] = useState("");
-  const [zoneStartedAt, setZoneStartedAt] = useState<number | null>(null);
-  const [zoneElapsed, setZoneElapsed] = useState(0);
+  const [navigation, setNavigation] = useState<NavigationState>(createNavigationState);
+  const navigationRef = useRef<NavigationState>(createNavigationState());
+  const [roadbookOverride, setRoadbookOverride] = useState<string | null>(null);
   const [zoneAlert, setZoneAlert] = useState<ZoneAlert>(null);
   const [stageSummary, setStageSummary] = useState<StageSummary | null>(null);
   const [endHoldActive, setEndHoldActive] = useState(false);
@@ -819,7 +858,6 @@ export default function NavigatorApp() {
   const endHoldTimerRef = useRef<number | null>(null);
   const zoneAlertTimerRef = useRef<number | null>(null);
   const previousZoneStateRef = useRef("OFF");
-  const reachedWaypointTurnsRef = useRef<Set<number>>(new Set());
 
   const selectedRoute =
     routes.find((route) => route.id === selectedRouteId) || routes[0];
@@ -840,6 +878,10 @@ export default function NavigatorApp() {
   const activeTurnCalls = useMemo(
     () => (activeRoute ? buildTurnCalls(activeRoute) : []),
     [activeRoute],
+  );
+  const activeEvents = useMemo(
+    () => activeRoute ? navigationEvents(activeRoute, activeTurnCalls, activeConfig?.zone) : [],
+    [activeRoute, activeTurnCalls, activeConfig],
   );
 
   useEffect(() => {
@@ -970,7 +1012,7 @@ export default function NavigatorApp() {
   }, [stageActive]);
 
   useEffect(() => {
-    if (stageStatus === "idle") return;
+    if (stageStatus !== "armed" && stageStatus !== "running") return;
     const timer = window.setInterval(() => setNow(Date.now()), 100);
     return () => window.clearInterval(timer);
   }, [stageStatus]);
@@ -994,17 +1036,20 @@ export default function NavigatorApp() {
       return;
     }
     const timer = window.setInterval(() => {
-      setProgress((previous) => {
-        const finishDistance = activeRoute.points.at(-1)!.distance;
-        const step = Math.max(2, finishDistance / 240);
-        if (previous + step >= finishDistance) {
-          return finishDistance;
-        }
-        return previous + step;
+      const timestamp = Date.now();
+      const previous = navigationRef.current.lastFix;
+      const finishDistance = activeRoute.points.at(-1)!.distance;
+      const distance = Math.min(finishDistance, (previous?.distance || 0) + 8);
+      const updated = advanceNavigation(activeEvents, navigationRef.current, {
+        timestamp, receivedAt: timestamp, distance, accuracy: 3, speedMps: 32,
+        offset: 0, reliable: true,
       });
+      navigationRef.current = updated;
+      setNavigation(updated);
+      setProgress(distance);
     }, 250);
     return () => window.clearInterval(timer);
-  }, [stageStatus, activeStage, activeRoute]);
+  }, [stageStatus, activeStage, activeRoute, activeEvents]);
 
   const updateSelectedConfig = (
     update: (current: RouteConfig) => RouteConfig,
@@ -1072,7 +1117,6 @@ export default function NavigatorApp() {
     startAnchoredRef.current = true;
     reliableRouteFixesRef.current = 0;
     routeDistanceReliableRef.current = true;
-    reachedWaypointTurnsRef.current = new Set();
     smoothedSpeedRef.current = 0;
     setCurrentSpeed(0);
     setLastGpsFixTimestamp(0);
@@ -1081,7 +1125,7 @@ export default function NavigatorApp() {
     setGpsStatus("off");
   };
 
-  const startGps = (route: Route) => {
+  const startGps = (route: Route, config: RouteConfig) => {
     if (!navigator.geolocation) {
       setGpsStatus("error");
       setGpsError("GPS unavailable");
@@ -1096,9 +1140,9 @@ export default function NavigatorApp() {
     startAnchoredRef.current = true;
     reliableRouteFixesRef.current = 0;
     routeDistanceReliableRef.current = true;
-    reachedWaypointTurnsRef.current = new Set();
     smoothedSpeedRef.current = 0;
     const liveTurnCalls = buildTurnCalls(route);
+    const liveEvents = navigationEvents(route, liveTurnCalls, config.zone);
     watchRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const here = {
@@ -1107,6 +1151,7 @@ export default function NavigatorApp() {
         };
         const timestamp = position.timestamp || Date.now();
         const previousFix = gpsFixRef.current;
+        if (previousFix && timestamp <= previousFix.timestamp) return;
         const elapsedSeconds = previousFix
           ? clamp((timestamp - previousFix.timestamp) / 1000, 0.1, 10)
           : 1;
@@ -1123,7 +1168,7 @@ export default function NavigatorApp() {
         const rawSpeed =
           reportedSpeed !== null &&
           Number.isFinite(reportedSpeed) &&
-          reportedSpeed > 0.25
+          reportedSpeed >= 0
             ? Math.max(0, reportedSpeed)
             : calculatedSpeed;
         const reliableSpeed = clamp(rawSpeed, 0, 70);
@@ -1216,6 +1261,7 @@ export default function NavigatorApp() {
               projection.nearestRouteDistance >=
               previousFix.routeDistance - rejoinRadius;
             if (
+              position.coords.accuracy <= 30 && !projection.ambiguous &&
               projection.nearestOffset <= rejoinRadius &&
               nearestIsForward &&
               nearestHeadingFits
@@ -1223,8 +1269,9 @@ export default function NavigatorApp() {
               const previousCandidate = rejoinCandidateRef.current;
               const coherent =
                 previousCandidate.count === 0 ||
-                projection.nearestRouteDistance >=
-                  previousCandidate.routeDistance - 30;
+                (projection.nearestRouteDistance >= previousCandidate.routeDistance - 12 &&
+                 projection.nearestRouteDistance - previousCandidate.routeDistance <=
+                   Math.max(20, reliableSpeed * elapsedSeconds * 1.7 + position.coords.accuracy));
               rejoinCandidateRef.current = {
                 count: coherent ? previousCandidate.count + 1 : 1,
                 routeDistance: projection.nearestRouteDistance,
@@ -1334,43 +1381,18 @@ export default function NavigatorApp() {
           }
         }
 
-        const protectedWaypointTurn = liveTurnCalls.find(
-          (turn) =>
-            turn.source === "WAYPOINT" &&
-            turn.distance >= (previousFix?.routeDistance || 0) - 20 &&
-            !reachedWaypointTurnsRef.current.has(turn.distance),
-        );
-        if (protectedWaypointTurn) {
-          const protectedInstruction = route.instructions.find(
-            (instruction) =>
-              Math.abs(instruction.distance - protectedWaypointTurn.distance) <
-              2,
-          );
-          if (protectedInstruction) {
-            const directWaypointDistance = haversine(
-              here,
-              route.points[protectedInstruction.point],
-            );
-            if (directWaypointDistance <= 45) {
-              reachedWaypointTurnsRef.current.add(
-                protectedWaypointTurn.distance,
-              );
-            } else if (
-              projectedDistance > protectedWaypointTurn.distance - 2
-            ) {
-              projectedDistance = Math.max(
-                previousFix?.routeDistance || 0,
-                protectedWaypointTurn.distance - 2,
-              );
-              progressAdjustment = "WAYPOINT_GUARD";
-            }
-          }
-        }
-
         if (previousFix && projectedDistance < previousFix.routeDistance) {
           projectedDistance = previousFix.routeDistance;
           projectedSegment = previousFix.segment;
         }
+
+        const matchedOffset = haversine(here, pointAtDistance(route.points, projectedDistance));
+        const matchedHeading = bearing(route.points[projectedSegment], route.points[projectedSegment + 1]);
+        const eventHeadingError = heading === undefined ? undefined : headingDifference(heading, matchedHeading);
+        distanceIsReliable = distanceIsReliable && !genuinelyOffRoute &&
+          position.coords.accuracy <= 30 && Date.now() - timestamp <= 2000 &&
+          !projection.ambiguous && matchedOffset <= 35 &&
+          progressAdjustment !== "CONTINUITY_CATCHUP";
 
         if (distanceIsReliable) {
           reliableRouteFixesRef.current += 1;
@@ -1412,14 +1434,23 @@ export default function NavigatorApp() {
           );
         }
 
+        const updatedNavigation = advanceNavigation(liveEvents, navigationRef.current, {
+          timestamp, receivedAt: Date.now(), distance: projectedDistance,
+          accuracy: position.coords.accuracy, speedMps: reliableSpeed,
+          offset: matchedOffset, headingError: eventHeadingError,
+          reliable: distanceIsReliable && stageHasStarted, ambiguous: projection.ambiguous, rejoined,
+        });
+        navigationRef.current = updatedNavigation;
+        setNavigation(updatedNavigation);
         const loggedTurnIndex = liveTurnCalls.findIndex(
-          (turn) => turn.distance > projectedDistance - TURN_PASS_MARGIN,
+          (_turn, index) => !eventFinished(updatedNavigation.events[`turn:${index}`]),
         );
         const loggedTurn =
           loggedTurnIndex >= 0 ? liveTurnCalls[loggedTurnIndex] : undefined;
         const loggedFollowingTurn =
           loggedTurnIndex >= 0
-            ? liveTurnCalls[loggedTurnIndex + 1]
+            ? liveTurnCalls.find((_turn, index) => index > loggedTurnIndex &&
+                !eventFinished(updatedNavigation.events[`turn:${index}`]))
             : undefined;
         const loggedTurnDistance = loggedTurn
           ? loggedTurn.distance - projectedDistance
@@ -1439,7 +1470,7 @@ export default function NavigatorApp() {
           loggedFollowingTurn.distance - loggedTurn.distance <=
             COMBINATION_DISTANCE;
         const loggedInstruction = route.instructions.find(
-          (instruction) => instruction.distance > projectedDistance + 5,
+          (instruction) => !eventFinished(updatedNavigation.events[`instruction:${instruction.id}`]),
         );
 
         if (stageHasStarted) {
@@ -1459,7 +1490,7 @@ export default function NavigatorApp() {
             progressAdjustment,
             callMode: genuinelyOffRoute
               ? "RECOVERY"
-              : !routeDistanceReliableRef.current
+              : !routeDistanceReliableRef.current || !updatedNavigation.ready
                 ? "ADJUSTING"
                 : loggedCombination
                   ? "COMBINATION"
@@ -1487,6 +1518,10 @@ export default function NavigatorApp() {
               projection.nearestOffset > OFF_ROUTE_DISTANCE
                 ? guidance.label
                 : "",
+            eventTransitions: updatedNavigation.transitions.map((event) =>
+              `${event.id}:${event.phase}:${event.reason}:${Math.round(event.at)}`).join(";"),
+            eventReady: updatedNavigation.ready,
+            upcomingTurnPhase: updatedNavigation.events[`turn:${loggedTurnIndex}`]?.phase || "",
           });
           if (runLogRef.current.length > 20_000) runLogRef.current.shift();
         }
@@ -1511,7 +1546,7 @@ export default function NavigatorApp() {
         setGpsStatus("error");
         setGpsError(error.message);
       },
-      { enableHighAccuracy: true, maximumAge: 500, timeout: 15_000 },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
     );
   };
 
@@ -1572,8 +1607,9 @@ export default function NavigatorApp() {
     setOffRouteDistance(0);
     setRouteDistanceReliable(true);
     setRecoveryGuidance(null);
-    setZoneElapsed(0);
-    setZoneStartedAt(null);
+    navigationRef.current = createNavigationState();
+    setNavigation(navigationRef.current);
+    setRoadbookOverride(null);
     setZoneAlert(null);
     previousZoneStateRef.current = "OFF";
     if (zoneAlertTimerRef.current !== null) {
@@ -1583,14 +1619,13 @@ export default function NavigatorApp() {
     setStageSummary(null);
     actualDistanceRef.current = 0;
     topSpeedRef.current = 0;
-    reachedWaypointTurnsRef.current = new Set();
     stageStartTimestampRef.current = startTimestamp;
     rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
     runLogRef.current = [];
     setNow(Date.now());
     setStageStatus(mode === "armed" ? "armed" : "running");
     setTab("rally");
-    if (mode !== "test") startGps(selectedRoute);
+    if (mode !== "test") startGps(selectedRoute, configSnapshot);
   };
 
   const completeStage = () => {
@@ -1618,7 +1653,6 @@ export default function NavigatorApp() {
       testMode: activeStage.testMode,
     });
     setStageStatus("finished");
-    setZoneStartedAt(null);
     setZoneAlert(null);
     if (zoneAlertTimerRef.current !== null) {
       window.clearTimeout(zoneAlertTimerRef.current);
@@ -1636,8 +1670,9 @@ export default function NavigatorApp() {
     setOffRouteDistance(0);
     setRouteDistanceReliable(true);
     setRecoveryGuidance(null);
-    setZoneElapsed(0);
-    setZoneStartedAt(null);
+    navigationRef.current = createNavigationState();
+    setNavigation(navigationRef.current);
+    setRoadbookOverride(null);
     setZoneAlert(null);
     previousZoneStateRef.current = "OFF";
     setTab("setup");
@@ -1694,6 +1729,10 @@ export default function NavigatorApp() {
       "next_instruction",
       "instruction_distance_m",
       "recovery_direction",
+      "event_transitions",
+      "event_ready",
+      "upcoming_turn_phase",
+      "app_version",
     ].join(",");
     const rows = runLogRef.current.map((entry) =>
       [
@@ -1729,6 +1768,10 @@ export default function NavigatorApp() {
           ? ""
           : entry.instructionDistance.toFixed(1),
         entry.recoveryDirection,
+        `"${entry.eventTransitions.replaceAll('"', '""')}"`,
+        entry.eventReady ? "yes" : "no",
+        entry.upcomingTurnPhase,
+        "0.10",
       ].join(","),
     );
     const blob = new Blob([[header, ...rows].join("\n")], {
@@ -1738,51 +1781,33 @@ export default function NavigatorApp() {
     const link = document.createElement("a");
     link.href = url;
     link.download = `XR-run-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
-  const predictionSeconds =
-    stageStatus === "running" &&
-    !activeStage?.testMode &&
-    gpsStatus === "ready" &&
-    routeDistanceReliable &&
-    offRouteDistance <= OFF_ROUTE_DISTANCE &&
-    lastGpsFixTimestamp > 0
-      ? clamp(
-          (now - lastGpsFixTimestamp) / 1000,
-          0,
-          GPS_PREDICTION_LIMIT_SECONDS,
-        )
-      : 0;
-  const predictedProgress =
-    progress + (currentSpeed / 3.6) * predictionSeconds;
-  const protectedWaypointAhead = activeTurnCalls.find(
-    (turn) =>
-      turn.source === "WAYPOINT" &&
-      turn.distance >= progress - 2 &&
-      !reachedWaypointTurnsRef.current.has(turn.distance),
-  );
-  const responsiveProgress = protectedWaypointAhead
-    ? Math.min(predictedProgress, protectedWaypointAhead.distance - 1)
-    : predictedProgress;
+  const gpsFresh = gpsStatus === "ready" && lastGpsFixTimestamp > 0 &&
+    now - lastGpsFixTimestamp >= -1000 && now - lastGpsFixTimestamp <= 2000;
+  const isOffRoute = !activeStage?.testMode && offRouteDistance > OFF_ROUTE_DISTANCE;
+  const routePositionReliable = Boolean(activeStage?.testMode) ||
+    (gpsFresh && !isOffRoute && routeDistanceReliable && navigation.ready);
   const routeDistance = activeRoute
-    ? clamp(
-        responsiveProgress,
-        0,
-        activeRoute.points.at(-1)!.distance,
-      )
+    ? displayProgress(progress, currentSpeed, lastGpsFixTimestamp, now,
+        stageStatus === "running" && !activeStage?.testMode && routePositionReliable,
+        activeRoute.points.at(-1)!.distance)
     : 0;
   const stageElapsed = activeStage
     ? Math.max(0, (now - activeStage.startTimestamp) / 1000)
     : 0;
   const nextTurnIndex = activeTurnCalls.findIndex(
-    (turn) => turn.distance > routeDistance - TURN_PASS_MARGIN,
+    (_turn, index) => !eventFinished(navigation.events[`turn:${index}`]),
   );
   const upcomingTurn =
     nextTurnIndex >= 0 ? activeTurnCalls[nextTurnIndex] : undefined;
   const followingTurn =
-    nextTurnIndex >= 0 ? activeTurnCalls[nextTurnIndex + 1] : undefined;
+    nextTurnIndex >= 0 ? activeTurnCalls.find((_turn, index) => index > nextTurnIndex &&
+      !eventFinished(navigation.events[`turn:${index}`])) : undefined;
   const distanceToUpcomingTurn = upcomingTurn
     ? upcomingTurn.distance - routeDistance
     : null;
@@ -1803,23 +1828,22 @@ export default function NavigatorApp() {
       ? secondaryTurn.distance - upcomingTurn.distance
       : secondaryTurn.distance - routeDistance
     : null;
+  const automaticInstruction = activeRoute?.instructions.find(
+    (instruction) => !eventFinished(navigation.events[`instruction:${instruction.id}`]),
+  );
+  const nextInstruction = (roadbookOverride
+    ? activeRoute?.instructions.find((instruction) => instruction.id === roadbookOverride)
+    : undefined) || automaticInstruction;
   const currentInstructionIndex = activeRoute
-    ? Math.max(
-        0,
-        activeRoute.instructions.findLastIndex(
-          (instruction) => instruction.distance <= routeDistance,
-        ),
-      )
-    : 0;
+    ? nextInstruction ? activeRoute.instructions.indexOf(nextInstruction) - 1
+      : activeRoute.instructions.length - 1 : -1;
   const currentInstruction =
     activeRoute?.instructions[currentInstructionIndex];
-  const nextInstruction =
-    activeRoute?.instructions[currentInstructionIndex + 1];
-  const isOffRoute =
-    !activeStage?.testMode && offRouteDistance > OFF_ROUTE_DISTANCE;
-  const routePositionReliable =
-    Boolean(activeStage?.testMode) ||
-    (!isOffRoute && routeDistanceReliable);
+  useEffect(() => {
+    if (roadbookOverride && eventFinished(navigation.events[`instruction:${roadbookOverride}`])) {
+      setRoadbookOverride(null);
+    }
+  }, [navigation, roadbookOverride]);
 
   const activeZone = activeConfig?.zone;
   const zoneStart = activeRoute?.instructions.find(
@@ -1840,38 +1864,11 @@ export default function NavigatorApp() {
   const zoneTarget = activeZone
     ? zoneDistance / (activeZone.speed / 3.6)
     : 0;
-  const zoneState = !zoneReady
-    ? "OFF"
-    : routeDistance < zoneStart
-      ? "ARMED"
-      : routeDistance >= zoneFinish
-        ? "COMPLETE"
-        : "ACTIVE";
-
-  useEffect(() => {
-    if (
-      stageStatus !== "running" ||
-      activeStage?.testMode ||
-      !zoneReady
-    ) {
-      return;
-    }
-    if (zoneState === "ARMED") {
-      setZoneStartedAt(null);
-      setZoneElapsed(0);
-    } else if (zoneState === "ACTIVE" && zoneStartedAt === null) {
-      setZoneStartedAt(Date.now());
-    } else if (zoneState === "COMPLETE" && zoneStartedAt !== null) {
-      setZoneElapsed((Date.now() - zoneStartedAt) / 1000);
-      setZoneStartedAt(null);
-    }
-  }, [
-    stageStatus,
-    activeStage,
-    zoneReady,
-    zoneState,
-    zoneStartedAt,
-  ]);
+  const zoneEvidence = zoneReady ? zoneFromEvents(navigation, zoneStart, zoneFinish) : null;
+  const zoneState = zoneEvidence?.phase || "OFF";
+  const zoneTimeUncertain = zoneEvidence?.uncertain ||
+    (zoneState === "ACTIVE" && zoneEvidence?.enteredAt === undefined) ||
+    (zoneState === "COMPLETE" && (zoneEvidence?.enteredAt === undefined || zoneEvidence?.finishedAt === undefined));
 
   useEffect(() => {
     const previousZoneState = previousZoneStateRef.current;
@@ -1898,34 +1895,14 @@ export default function NavigatorApp() {
       showZoneAlert("DZ");
     } else if (
       zoneState === "COMPLETE" &&
-      previousZoneState === "ACTIVE"
+      previousZoneState !== "COMPLETE"
     ) {
       showZoneAlert("FZ");
     }
   }, [stageStatus, zoneReady, zoneState]);
 
-  useEffect(() => {
-    if (
-      stageStatus !== "running" ||
-      activeStage?.testMode ||
-      zoneState !== "ACTIVE" ||
-      zoneStartedAt === null
-    ) {
-      return;
-    }
-    const timer = window.setInterval(
-      () => setZoneElapsed((Date.now() - zoneStartedAt) / 1000),
-      200,
-    );
-    return () => window.clearInterval(timer);
-  }, [stageStatus, activeStage, zoneState, zoneStartedAt]);
-
-  const displayedZoneElapsed =
-    activeStage?.testMode && zoneState === "ACTIVE"
-      ? (routeDistance - zoneStart!) / ((activeZone?.speed || 1) / 3.6)
-      : activeStage?.testMode && zoneState === "COMPLETE"
-        ? zoneTarget
-        : zoneElapsed;
+  const displayedZoneElapsed = zoneEvidence?.enteredAt !== undefined
+    ? Math.max(0, ((zoneEvidence.finishedAt ?? now) - zoneEvidence.enteredAt) / 1000) : 0;
   const showZone =
     zoneState === "ACTIVE" ||
     (zoneState === "ARMED" &&
@@ -1963,7 +1940,8 @@ export default function NavigatorApp() {
         currentInstructionIndex + direction,
       ),
     );
-    setProgress(activeRoute.instructions[targetIndex].distance);
+    // A roadbook correction must never move the GPS odometer or cross DZ/FZ.
+    setRoadbookOverride(activeRoute.instructions[targetIndex].id);
   };
 
   const selectedZoneStart = selectedRoute?.instructions.find(
@@ -1996,10 +1974,10 @@ export default function NavigatorApp() {
           : "GPS OFF";
 
   return (
-    <main className={`app-shell ${stageActive ? "stage-active" : ""}`}>
+    <main className={`app-shell ${stageActive && tab === "rally" ? "stage-active" : ""}`}>
       <header className="topbar">
         <div className="app-brand">
-          <span>EXTREME RALLY V0.9</span>
+          <span>EXTREME RALLY V0.10</span>
           <h1>RALLY NAVIGATOR</h1>
         </div>
         <div className="header-actions">
@@ -2392,22 +2370,10 @@ export default function NavigatorApp() {
                       </div>
                     )}
 
-                  {zoneAlert && activeZone && (
-                    <div className={`zone-alert-overlay ${zoneAlert.toLowerCase()}`}>
-                      <span>SPEED ZONE</span>
-                      <strong>{zoneAlert}</strong>
-                      <b>
-                        {zoneAlert === "DZ"
-                          ? `${activeZone.speed} km/h LIMIT`
-                          : `ZONE ${formatDuration(displayedZoneElapsed)}`}
-                      </b>
-                    </div>
-                  )}
-
                   <section className="drive-readout">
                     <div>
                       <span>ROUTE ODO</span>
-                      <strong>{(routeDistance / 1000).toFixed(2)}</strong>
+                      <strong>{(progress / 1000).toFixed(2)}</strong>
                       <small>km</small>
                       <div className="readout-meta">
                         <span>STAGE TIME</span>
@@ -2427,9 +2393,9 @@ export default function NavigatorApp() {
                         <b>
                           {activeStage.testMode
                             ? "SIM"
-                            : gpsStatus === "ready"
+                            : gpsFresh
                               ? `±${Math.round(gpsAccuracy || 0)}m`
-                              : "—"}
+                              : "STALE"}
                         </b>
                       </div>
                     </div>
@@ -2439,16 +2405,17 @@ export default function NavigatorApp() {
                     <section
                       className={`speed-zone-card ${zoneState.toLowerCase()} ${
                         zoneSpeedExceeded ? "over-limit" : ""
-                      }`}
+                      } ${zoneAlert ? "zone-announcement" : ""}`}
+                      aria-live="polite"
                     >
                       <div className="zone-state">
                         <span>SPEED ZONE</span>
                         <strong>
                           {zoneState === "ARMED"
-                            ? `DZ IN ${formatDistance(zoneDistanceRemaining)}`
+                            ? routePositionReliable ? `DZ IN ${formatDistance(zoneDistanceRemaining)}` : "DZ POSITION ?"
                             : zoneState === "ACTIVE"
-                              ? "DZ ACTIVE"
-                              : "FZ COMPLETE"}
+                              ? zoneTimeUncertain ? "IN ZONE · ENTRY ?" : "DZ ACTIVE"
+                              : zoneTimeUncertain ? "PAST FZ · TIME ?" : "FZ COMPLETE"}
                         </strong>
                       </div>
                       <div className="zone-limit">
@@ -2458,16 +2425,16 @@ export default function NavigatorApp() {
                       </div>
                       <div className="zone-clock">
                         <span>
-                          {zoneState === "ACTIVE" ? "ZONE TIMER" : "TARGET"}
+                          {zoneTimeUncertain ? "TIME UNCONFIRMED" : zoneState === "ACTIVE" ? "ZONE TIMER" : zoneState === "COMPLETE" ? "ZONE TIME" : "TARGET"}
                         </span>
                         <strong>
-                          {formatDuration(displayedZoneElapsed)}
-                          {zoneState === "ACTIVE" && (
+                          {zoneState === "ARMED" ? formatDuration(zoneTarget) : zoneTimeUncertain ? "—" : formatDuration(displayedZoneElapsed)}
+                          {zoneState === "ACTIVE" && !zoneTimeUncertain && (
                             <small> / {formatDuration(zoneTarget)}</small>
                           )}
                         </strong>
                         {zoneState === "ACTIVE" && (
-                          <b>{formatDistance(zoneDistanceRemaining)} TO FZ</b>
+                          <b>{routePositionReliable ? `${formatDistance(zoneDistanceRemaining)} TO FZ` : "POSITION UNCONFIRMED"}</b>
                         )}
                       </div>
                     </section>
@@ -2488,11 +2455,11 @@ export default function NavigatorApp() {
                       {isOffRoute
                         ? "RECOVERY"
                         : !routePositionReliable
-                          ? "UPCOMING TURN · DISTANCE ADJUSTING"
+                          ? "POSITION UNCONFIRMED"
                           : upcomingTurnActive
                             ? closeCombination
                               ? "UPCOMING COMBINATION"
-                              : "UPCOMING TURN"
+                              : upcomingTurn?.sparseGeometry ? "TURN · SPARSE GPX" : "UPCOMING TURN"
                             : "ROUTE AHEAD"}
                     </span>
                     <div className="turn-arrow">
@@ -2513,9 +2480,9 @@ export default function NavigatorApp() {
                       {isOffRoute
                         ? `${formatDistance(offRouteDistance)} TO GPX`
                         : !routePositionReliable
-                          ? "ADJUSTING"
+                          ? "UNCONFIRMED"
                           : distanceToUpcomingTurn !== null
-                            ? formatDistance(distanceToUpcomingTurn)
+                            ? distanceToUpcomingTurn <= 0 ? "NOW" : formatDistance(distanceToUpcomingTurn)
                           : "—"}
                     </strong>
                     {isOffRoute && (
@@ -2525,7 +2492,7 @@ export default function NavigatorApp() {
                     )}
                     {!isOffRoute && !routePositionReliable && (
                       <small className="recovery-note">
-                        TURN REMAINS ACTIVE · DISTANCE TEMPORARILY UNRELIABLE
+                        {gpsFresh ? "WAITING FOR RELIABLE ROUTE MATCH" : "WAITING FOR A FRESH GPS FIX"}
                       </small>
                     )}
                     {!isOffRoute &&
@@ -2556,7 +2523,7 @@ export default function NavigatorApp() {
                         : "NO FOLLOWING CALL"}
                     </strong>
                     <b>
-                      {secondaryTurnDistance !== null
+                      {!routePositionReliable ? "—" : secondaryTurnDistance !== null
                         ? `${upcomingTurnActive ? "+" : ""}${formatDistance(
                             secondaryTurnDistance,
                           )}`
