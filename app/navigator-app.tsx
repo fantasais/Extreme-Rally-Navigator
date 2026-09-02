@@ -135,7 +135,6 @@ const STORAGE_KEY = "xr-navigator-v0.5-routes";
 
 const EARTH_RADIUS = 6_371_000;
 const GENERIC_NOTE = "Roadbook instruction";
-const OFF_ROUTE_DISTANCE = 50;
 const COMBINATION_DISTANCE = 120;
 
 const haversine = (
@@ -371,6 +370,10 @@ function sourceGapAtDistance(points: Point[], distance: number) {
   return points[finishIndex].distance - points[finishIndex - 1].distance;
 }
 
+function adaptiveOffRouteDistance(accuracy: number) {
+  return clamp(18 + Math.max(0, accuracy) * 1.25, 20, 40);
+}
+
 const formatDistance = (metres: number) =>
   metres >= 1000
     ? `${(metres / 1000).toFixed(metres < 10_000 ? 1 : 0)} km`
@@ -573,6 +576,37 @@ function buildTurnCalls(route: Route): TurnCall[] {
       endDistance: sampleDistance,
     });
   }
+
+  // A long source gap is a straight bridge between two known GPX points. We
+  // cannot invent bends inside that bridge, but a clear change of direction
+  // where the bridge meets the next known leg is still valid geometry.
+  for (let pointIndex = 1; pointIndex < route.points.length - 1; pointIndex += 1) {
+    const before = route.points[pointIndex - 1];
+    const centre = route.points[pointIndex];
+    const after = route.points[pointIndex + 1];
+    const approachGap = centre.distance - before.distance;
+    const exitGap = after.distance - centre.distance;
+    if (Math.max(approachGap, exitGap) <= 140 || Math.min(approachGap, exitGap) < 4) {
+      continue;
+    }
+
+    const turn = signedAngle(bearing(before, centre), bearing(centre, after));
+    const magnitude = Math.abs(turn);
+    if (magnitude < 35) continue;
+
+    trackCandidates.push({
+      distance: centre.distance,
+      direction: turn > 0 ? "RIGHT" : "LEFT",
+      severity: turnSeverity(magnitude),
+      angle: magnitude,
+      source: "TRACK",
+      startDistance: centre.distance,
+      endDistance: centre.distance,
+      sparseGeometry: true,
+    });
+  }
+
+  trackCandidates.sort((a, b) => a.distance - b.distance);
 
   const directionalRuns: TurnCall[] = [];
   trackCandidates.forEach((candidate) => {
@@ -826,6 +860,7 @@ export default function NavigatorApp() {
   const [lastGpsFixTimestamp, setLastGpsFixTimestamp] = useState(0);
   const [gpsError, setGpsError] = useState("");
   const [offRouteDistance, setOffRouteDistance] = useState(0);
+  const [offRouteActive, setOffRouteActive] = useState(false);
   const [routeDistanceReliable, setRouteDistanceReliable] = useState(true);
   const [recoveryGuidance, setRecoveryGuidance] =
     useState<RecoveryGuidance | null>(null);
@@ -847,6 +882,7 @@ export default function NavigatorApp() {
   const smoothedSpeedRef = useRef(0);
   const runLogRef = useRef<RunLogEntry[]>([]);
   const rejoinCandidateRef = useRef({ count: 0, routeDistance: 0 });
+  const offRouteCandidateRef = useRef({ count: 0, previousOffset: 0 });
   const continuityCandidateRef = useRef({ count: 0, routeDistance: 0 });
   const wasOffRouteRef = useRef(false);
   const startAnchoredRef = useRef(true);
@@ -1112,6 +1148,7 @@ export default function NavigatorApp() {
     watchRef.current = null;
     gpsFixRef.current = null;
     rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
+    offRouteCandidateRef.current = { count: 0, previousOffset: 0 };
     continuityCandidateRef.current = { count: 0, routeDistance: 0 };
     wasOffRouteRef.current = false;
     startAnchoredRef.current = true;
@@ -1121,6 +1158,7 @@ export default function NavigatorApp() {
     setCurrentSpeed(0);
     setLastGpsFixTimestamp(0);
     setRecoveryGuidance(null);
+    setOffRouteActive(false);
     setRouteDistanceReliable(true);
     setGpsStatus("off");
   };
@@ -1135,6 +1173,7 @@ export default function NavigatorApp() {
     setGpsError("");
     gpsFixRef.current = null;
     rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
+    offRouteCandidateRef.current = { count: 0, previousOffset: 0 };
     continuityCandidateRef.current = { count: 0, routeDistance: 0 };
     wasOffRouteRef.current = false;
     startAnchoredRef.current = true;
@@ -1215,8 +1254,47 @@ export default function NavigatorApp() {
           heading === undefined ||
           reliableSpeed < 2.5 ||
           headingDifference(heading, projection.nearestSegmentBearing) < 75;
-        const genuinelyOffRoute =
-          projection.nearestOffset > OFF_ROUTE_DISTANCE;
+        const departureDistance = adaptiveOffRouteDistance(
+          position.coords.accuracy,
+        );
+        const nearestHeadingError =
+          heading === undefined
+            ? 0
+            : headingDifference(heading, projection.nearestSegmentBearing);
+        const previousDeparture = offRouteCandidateRef.current;
+        const distanceDeparture =
+          projection.nearestOffset > departureDistance;
+        const headingGeometryReliable =
+          sourceGapAtDistance(
+            route.points,
+            projection.nearestRouteDistance,
+          ) <= 120;
+        const headingDeparture =
+          reliableSpeed >= 2.5 &&
+          headingGeometryReliable &&
+          nearestHeadingError >= 40 &&
+          projection.nearestOffset > Math.max(14, departureDistance - 7) &&
+          projection.nearestOffset >= previousDeparture.previousOffset - 1;
+        const departureCandidate =
+          position.coords.accuracy <= 30 &&
+          !projection.ambiguous &&
+          (distanceDeparture || headingDeparture);
+
+        if (!wasOffRouteRef.current && departureCandidate) {
+          offRouteCandidateRef.current = {
+            count: previousDeparture.count + 1,
+            previousOffset: projection.nearestOffset,
+          };
+        } else {
+          offRouteCandidateRef.current = {
+            count: 0,
+            previousOffset: projection.nearestOffset,
+          };
+        }
+
+        const confirmedDeparture =
+          departureCandidate && offRouteCandidateRef.current.count >= 3;
+        let genuinelyOffRoute = confirmedDeparture;
         const nearRouteStart =
           haversine(here, route.points[0]) <=
             Math.max(70, position.coords.accuracy * 3) &&
@@ -1232,7 +1310,7 @@ export default function NavigatorApp() {
             projectedDistance = projection.nearestRouteDistance;
             projectedSegment = projection.nearestSegment;
           }
-          wasOffRouteRef.current = genuinelyOffRoute;
+          wasOffRouteRef.current = confirmedDeparture;
         } else if (
           startAnchoredRef.current &&
           nearRouteStart &&
@@ -1245,7 +1323,7 @@ export default function NavigatorApp() {
         } else {
           startAnchoredRef.current = false;
 
-          if (genuinelyOffRoute) {
+          if (confirmedDeparture) {
             wasOffRouteRef.current = true;
             rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
             continuityCandidateRef.current = {
@@ -1257,6 +1335,7 @@ export default function NavigatorApp() {
             distanceIsReliable = false;
             progressAdjustment = "OFF_ROUTE_HOLD";
           } else if (wasOffRouteRef.current) {
+            genuinelyOffRoute = true;
             const nearestIsForward =
               projection.nearestRouteDistance >=
               previousFix.routeDistance - rejoinRadius;
@@ -1288,6 +1367,7 @@ export default function NavigatorApp() {
               projectedSegment = projection.nearestSegment;
               rejoined = true;
               wasOffRouteRef.current = false;
+              genuinelyOffRoute = false;
               rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
               progressAdjustment = "OFF_ROUTE_REJOIN";
             } else {
@@ -1515,7 +1595,7 @@ export default function NavigatorApp() {
               ? loggedInstruction.distance - projectedDistance
               : null,
             recoveryDirection:
-              projection.nearestOffset > OFF_ROUTE_DISTANCE
+              genuinelyOffRoute
                 ? guidance.label
                 : "",
             eventTransitions: updatedNavigation.transitions.map((event) =>
@@ -1535,6 +1615,7 @@ export default function NavigatorApp() {
         };
         setProgress(projectedDistance);
         setOffRouteDistance(projection.nearestOffset);
+        setOffRouteActive(genuinelyOffRoute);
         setRouteDistanceReliable(routeDistanceReliableRef.current);
         setRecoveryGuidance(guidance);
         setCurrentSpeed(smoothedSpeedRef.current * 3.6);
@@ -1605,6 +1686,7 @@ export default function NavigatorApp() {
     });
     setProgress(0);
     setOffRouteDistance(0);
+    setOffRouteActive(false);
     setRouteDistanceReliable(true);
     setRecoveryGuidance(null);
     navigationRef.current = createNavigationState();
@@ -1621,6 +1703,7 @@ export default function NavigatorApp() {
     topSpeedRef.current = 0;
     stageStartTimestampRef.current = startTimestamp;
     rejoinCandidateRef.current = { count: 0, routeDistance: 0 };
+    offRouteCandidateRef.current = { count: 0, previousOffset: 0 };
     runLogRef.current = [];
     setNow(Date.now());
     setStageStatus(mode === "armed" ? "armed" : "running");
@@ -1668,6 +1751,7 @@ export default function NavigatorApp() {
     setStageStatus("idle");
     setProgress(0);
     setOffRouteDistance(0);
+    setOffRouteActive(false);
     setRouteDistanceReliable(true);
     setRecoveryGuidance(null);
     navigationRef.current = createNavigationState();
@@ -1771,7 +1855,7 @@ export default function NavigatorApp() {
         `"${entry.eventTransitions.replaceAll('"', '""')}"`,
         entry.eventReady ? "yes" : "no",
         entry.upcomingTurnPhase,
-        "0.10",
+        "0.11",
       ].join(","),
     );
     const blob = new Blob([[header, ...rows].join("\n")], {
@@ -1789,7 +1873,7 @@ export default function NavigatorApp() {
 
   const gpsFresh = gpsStatus === "ready" && lastGpsFixTimestamp > 0 &&
     now - lastGpsFixTimestamp >= -1000 && now - lastGpsFixTimestamp <= 2000;
-  const isOffRoute = !activeStage?.testMode && offRouteDistance > OFF_ROUTE_DISTANCE;
+  const isOffRoute = !activeStage?.testMode && offRouteActive;
   const routePositionReliable = Boolean(activeStage?.testMode) ||
     (gpsFresh && !isOffRoute && routeDistanceReliable && navigation.ready);
   const routeDistance = activeRoute
@@ -1977,7 +2061,7 @@ export default function NavigatorApp() {
     <main className={`app-shell ${stageActive && tab === "rally" ? "stage-active" : ""}`}>
       <header className="topbar">
         <div className="app-brand">
-          <span>EXTREME RALLY V0.10</span>
+          <span>EXTREME RALLY V0.11</span>
           <h1>RALLY NAVIGATOR</h1>
         </div>
         <div className="header-actions">
