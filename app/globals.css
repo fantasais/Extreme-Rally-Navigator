@@ -319,6 +319,10 @@ button:disabled {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.metric-grid.route-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .metric-grid > div {
   display: grid;
   min-width: 0;
@@ -432,6 +436,71 @@ button:disabled {
 
 .start-panel {
   border-color: rgba(145, 243, 49, .34);
+}
+
+.setup-stage-panel,
+.setup-start-panel {
+  box-shadow: none;
+}
+
+.advanced-setup {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #0c0e10;
+}
+
+.advanced-setup > summary {
+  display: grid;
+  gap: 3px;
+  padding: 15px 46px 15px 15px;
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  touch-action: manipulation;
+}
+
+.advanced-setup > summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-setup > summary::after {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  color: var(--lime);
+  content: "+";
+  font-size: 25px;
+  font-weight: 700;
+  transform: translateY(-50%);
+}
+
+.advanced-setup[open] > summary::after {
+  content: "−";
+}
+
+.advanced-setup > summary span {
+  color: var(--lime);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .13em;
+}
+
+.advanced-setup > summary b {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.advanced-stack {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.advanced-stack > .panel:first-child {
+  margin-top: 10px;
 }
 
 .stage-ready {
@@ -572,7 +641,7 @@ button:disabled {
 .live-metrics {
   display: grid;
   grid-template-columns: 1.3fr .7fr;
-  grid-template-rows: minmax(70px, auto) 34px;
+  grid-template-rows: minmax(86px, auto) 42px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 13px;
@@ -636,7 +705,7 @@ button:disabled {
 
 .minor strong {
   overflow: hidden;
-  font-size: 12px;
+  font-size: clamp(15px, 4vw, 19px);
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -700,7 +769,7 @@ button:disabled {
 
 .turn-card {
   display: grid;
-  min-height: 185px;
+  min-height: 210px;
   padding: 10px 12px;
   border: 1px solid #3f454d;
   border-radius: 15px;
@@ -724,7 +793,7 @@ button:disabled {
 
 .turn-main {
   display: grid;
-  grid-template-columns: minmax(90px, .7fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(100px, .72fr) minmax(0, 1.28fr);
   align-items: center;
   gap: 10px;
 }
@@ -732,7 +801,7 @@ button:disabled {
 .turn-arrow {
   color: var(--lime);
   font-family: Arial, sans-serif;
-  font-size: clamp(90px, 28vw, 145px);
+  font-size: clamp(105px, 31vw, 165px);
   font-weight: 900;
   line-height: .8;
   text-align: center;
@@ -745,14 +814,14 @@ button:disabled {
 }
 
 .turn-main strong {
-  font-size: clamp(27px, 8vw, 43px);
+  font-size: clamp(30px, 8.5vw, 48px);
   line-height: .9;
   text-transform: uppercase;
 }
 
 .turn-main b {
   color: var(--lime);
-  font-size: clamp(22px, 7vw, 36px);
+  font-size: clamp(27px, 7.7vw, 43px);
   font-variant-numeric: tabular-nums;
 }
 
@@ -771,7 +840,7 @@ button:disabled {
 .roadbook-card {
   display: grid;
   min-width: 0;
-  min-height: 86px;
+  min-height: 72px;
   align-content: center;
   gap: 3px;
   padding: 8px 10px;
@@ -823,7 +892,7 @@ button:disabled {
 
 .correction-action,
 .hold-end-action {
-  min-height: 48px;
+  min-height: 40px;
 }
 
 .correction-action {
@@ -865,7 +934,7 @@ button:disabled {
 
 .recovery-card {
   display: grid;
-  min-height: calc(100dvh - 150px - var(--safe-bottom));
+  min-height: 210px;
   place-content: center;
   gap: 9px;
   padding: 20px;
@@ -903,34 +972,11 @@ button:disabled {
 }
 
 .recovery-card button {
-  margin-top: 12px;
+  min-height: 38px;
+  margin-top: 5px;
   border-color: var(--lime);
   background: var(--lime);
   color: #071000;
-}
-
-.recovery-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.recovery-actions button {
-  min-height: 44px;
-  margin-top: 0;
-}
-
-.recovery-actions .correction-action {
-  border-color: #59616b;
-  background: #171a1e;
-  color: var(--text);
-}
-
-.recovery-actions .hold-end-action {
-  border-color: rgba(255, 87, 80, .7);
-  background: #260b0a;
-  color: #ffaaa6;
 }
 
 .zone-flash {
@@ -1087,35 +1133,53 @@ button:disabled {
   overflow: hidden;
 }
 
-.stage-active .topbar {
-  min-height: 58px;
-  padding-block: 7px;
-}
-
+.stage-active .topbar,
 .stage-active .nav-tabs {
-  top: 58px;
-}
-
-.stage-active .nav-tabs button {
-  min-height: 43px;
+  display: none;
 }
 
 .stage-active .screen {
-  height: calc(100dvh - 101px);
-  padding: 7px 8px calc(7px + var(--safe-bottom));
+  height: 100dvh;
+  padding: max(6px, env(safe-area-inset-top, 0px)) 7px calc(6px + var(--safe-bottom));
   overflow: hidden;
 }
 
 .stage-active .rally-screen {
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+}
+
+.stage-active .live-metrics,
+.stage-active .live-zone,
+.stage-active .lower-calls,
+.stage-active .rally-actions {
+  flex: 0 0 auto;
+}
+
+.stage-active .rally-primary {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.stage-active .turn-card {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.stage-active .turn-main {
+  min-height: 0;
 }
 
 .stage-active .recovery-card {
-  grid-row: 2 / -1;
   width: 100%;
-  height: 100%;
   min-height: 0;
+}
+
+.stage-active .rally-actions button {
+  min-height: 40px;
+  padding-block: 0;
+  font-size: 10px;
 }
 
 @media (max-width: 430px) {
@@ -1141,38 +1205,29 @@ button:disabled {
 }
 
 @media (max-height: 760px) {
-  .stage-active .brand span,
-  .stage-active .install-pill {
-    display: none;
-  }
-
   .stage-active .live-metrics {
-    grid-template-rows: 65px 29px;
+    grid-template-rows: 76px 36px;
   }
 
   .stage-active .odo strong,
   .stage-active .speed strong {
-    font-size: clamp(42px, 15vw, 60px);
+    font-size: clamp(48px, 17vw, 68px);
   }
 
   .stage-active .live-zone {
-    min-height: 63px;
-  }
-
-  .stage-active .turn-card {
-    min-height: 0;
+    min-height: 60px;
   }
 
   .stage-active .turn-arrow {
-    font-size: clamp(72px, 23vw, 104px);
+    font-size: clamp(84px, 26vw, 120px);
   }
 
   .stage-active .turn-main strong {
-    font-size: clamp(23px, 7vw, 34px);
+    font-size: clamp(25px, 7.4vw, 38px);
   }
 
   .stage-active .turn-main b {
-    font-size: clamp(20px, 6vw, 30px);
+    font-size: clamp(23px, 6.8vw, 34px);
   }
 
   .stage-active .next-card,
@@ -1183,34 +1238,13 @@ button:disabled {
 
   .stage-active .correction-action,
   .stage-active .hold-end-action {
-    min-height: 42px;
+    min-height: 39px;
     font-size: 10px;
   }
 }
 
 @media (max-height: 660px) {
-  .stage-active .topbar {
-    min-height: 48px;
-  }
-
-  .stage-active .topbar .brand h1 {
-    font-size: 17px;
-  }
-
-  .stage-active .gps-pill {
-    min-height: 32px;
-  }
-
-  .stage-active .nav-tabs {
-    top: 48px;
-  }
-
-  .stage-active .nav-tabs button {
-    min-height: 38px;
-  }
-
   .stage-active .screen {
-    height: calc(100dvh - 86px);
     padding-block: 5px;
   }
 
@@ -1219,12 +1253,12 @@ button:disabled {
   }
 
   .stage-active .live-metrics {
-    grid-template-rows: 57px 26px;
+    grid-template-rows: 67px 32px;
   }
 
   .stage-active .odo strong,
   .stage-active .speed strong {
-    font-size: clamp(36px, 13vw, 51px);
+    font-size: clamp(42px, 15vw, 58px);
   }
 
   .stage-active .live-zone {
@@ -1236,15 +1270,15 @@ button:disabled {
   }
 
   .stage-active .turn-arrow {
-    font-size: clamp(61px, 19vw, 82px);
+    font-size: clamp(70px, 22vw, 94px);
   }
 
   .stage-active .turn-main strong {
-    font-size: clamp(20px, 6vw, 28px);
+    font-size: clamp(21px, 6.3vw, 30px);
   }
 
   .stage-active .turn-main b {
-    font-size: clamp(17px, 5.4vw, 25px);
+    font-size: clamp(19px, 5.8vw, 27px);
   }
 
   .stage-active .next-card,
@@ -1257,7 +1291,7 @@ button:disabled {
   }
 
   .stage-active .rally-actions button {
-    min-height: 37px;
+    min-height: 36px;
   }
 
   .stage-active .recovery-arrow {
