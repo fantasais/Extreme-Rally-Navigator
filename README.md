@@ -1,57 +1,77 @@
-# Extreme Rally Navigator v0.11
+# Extreme Rally Navigator v1.0
 
-Portrait-first Android PWA for extreme-rally GPX navigation.
+Clean replacement build created from the Rally of Himalayas field findings. This is a standalone Next.js PWA; it does not depend on any file from v0.11.
 
-## v0.11 corrections
+## What is fixed
 
-- Uses an accuracy-aware, persistent off-route detector instead of a fixed 50 m threshold.
-- Uses sustained lateral separation and reliable heading divergence to identify parallel-road and early-turn deviations without reacting to a single noisy GPS fix.
-- Generates high-confidence major calls where known GPX legs meet across a sparse source gap.
-- Keeps the route-independent navigation event engine in `app/navigation-events.ts`.
+- Continuous segment projection instead of nearest-GPX-point snapping.
+- Guarded, monotonic route progress. A normal fix cannot jump more than the physical continuity envelope.
+- Automatic rejoin after three coherent fixes when the forward movement is physically plausible.
+- Explicit confirmation only for an implausible or ambiguous large rejoin.
+- Calls crossed during an unobserved GNSS gap are recorded as missed; an old call is not left onscreen indefinitely.
+- Faster speed response and 200 ms screen extrapolation between GNSS callbacks.
+- Track-generated calls clear at bend entry instead of remaining after the turn.
+- Sparse GPX vertices generate low-confidence calls instead of silently deleting the turn.
+- Adaptive off-route threshold using GNSS accuracy and GPX segment spacing.
+- Recovery bearing remains visible with ODO, speed, stage time, correction and end-stage controls.
+- Optional stage start/finish positions, official ODO at start and first roadbook instruction.
+- Live `SET ODO`, `SET ODO + ROUTE` and `SET INSTRUCTION` controls.
+- Multiple stage profiles inside one leg GPX.
+- Multiple DZ/FZ zones per stage, entered by stage ODO, full-route km or instruction.
+- Automatic reverse-route creation.
+- Route-specific setups frozen when a stage starts.
+- Per-fix run logs written directly to IndexedDB. Interrupted runs remain exportable after reopening the app.
+- One-second hold to end, followed by elapsed time, actual distance, average speed and filtered top speed.
+- Portrait cockpit scales to short and tall phone screens without scrolling during a normal live stage.
+- Wake lock is reacquired after Android releases it.
+- Offline shell and compiled assets are pre-cached by the service worker.
+- Legacy v0.4/v0.5 route data is migrated once when available.
 
-## v0.5 navigation correction
+## Important limitation
 
-This release replaces the first live-tracking engine after real-road testing exposed unreliable distance and turn alignment.
+A PDF roadbook is not automatically converted into reliable instructions. Tulip drawings and printed ODO values cannot be safely inferred from arbitrary PDFs in the browser. The physical roadbook remains the master.
 
-- Holds an Android screen wake lock while a stage is armed or running, and reacquires it when the app returns to the foreground.
-- Projects every GPS fix onto the nearest position along a GPX line segment instead of snapping to the nearest stored track point.
-- Uses route continuity, vehicle heading and plausible travel distance to reduce jumps at crossings and nearby parallel sections.
-- Shows a large two-decimal route odometer and large live vehicle speed.
-- Smooths GPS speed while preserving useful response.
-- Interpolates route geometry at fixed distance intervals for turn analysis.
-- Places generated calls near the detected bend entry rather than an arbitrary stored GPX point.
-- Projects instruction waypoints onto route segments for more accurate instruction and DZ/FZ distances.
-- Records a private live-run diagnostic CSV that can be downloaded from Controls. Nothing is uploaded automatically.
+For app roadbook markers, import a prepared CSV. See `examples/roadbook-template.csv`. Required columns:
 
-## v0.5.1 live-screen packing
+- `number`
+- either `route_km` or `stage_km`
 
-- Route odometer, speed, stage time and GPS accuracy share one compact readout.
-- Screen wake lock remains active but no longer occupies a permanent live-screen tile.
-- Upcoming Turn, Next and Roadbook fit into the normal portrait rally screen without scrolling.
-- The active-stage header, tabs, gaps and cards are compressed without reducing the primary turn-call size.
-- Testing and diagnostic export controls are inactive while a stage is live; correction, recovery and end-stage controls remain available.
+Optional columns: `label`, `note`, `kind`, `heading`. Valid kinds are `START`, `FINISH`, `STOP`, `DZ`, `FZ`, or `ROADBOOK`.
 
-## Stage workflow
+## Complete replacement deployment
 
-1. Upload one or more GPX files.
-2. Select the stage and enter its official start time.
-3. Choose Turn Assist and optional DZ/FZ settings for that GPX.
-4. Tap **Arm Start**. GPS acquisition, screen wake lock and countdown begin automatically.
-5. At zero, Rally mode starts and displays route odometer, speed, upcoming turn and distance.
+1. Keep a ZIP backup of the current GitHub repository.
+2. Delete the current repository contents on the deployment branch.
+3. Extract this package.
+4. Upload **the contents inside this folder** to the repository root. `package.json` must sit at the root—not inside another nested folder.
+5. Commit once and let Vercel deploy.
+6. Confirm the Vercel build ends with `Compiled successfully` and `Finished TypeScript`.
+7. Open the deployed URL online once, close every older installed PWA/tab, then reopen it. This lets the new service worker cache the v1 shell.
+8. The header must show `V1.0.0` before testing. Exported logs also record build `2026.10.05.1`.
 
-Every GPX retains its own start, turn and DZ/FZ configuration. Existing v0.4 route data is migrated automatically.
+Do not mix v0.11 files with this source tree. There is only one `navigator-app.tsx`, under `app/`.
 
-## Deploy through GitHub and Vercel
+## Local verification
 
-1. Extract the package and upload every file and folder to the repository root.
-2. Commit the changes. Vercel redeploys the connected repository automatically.
-3. No environment variables or custom build settings are required.
-4. After deployment, close every open browser/PWA instance and reopen the installed app once so the v0.11 offline cache activates.
+```bash
+npm install
+npm run test:core
+npm run build
+```
 
-## Testing and safety
+## Rally setup logic
 
-- Test with a passenger operating and observing the phone.
-- If a call or distance is wrong, download the run log from **Controls → Diagnostics** and retain the exact GPX used for that run.
-- Generated calls describe GPX geometry only. They cannot identify grip, road surface, traffic, hazards or an incorrect organiser track.
-- Sparse or poorly converted GPX geometry cannot support trustworthy bend calls.
-- The organiser roadbook and safety instructions remain authoritative.
+- `START · ROUTE KM`: position of the SS start within the full leg GPX.
+- `FINISH · ROUTE KM`: optional SS finish within the full leg GPX.
+- `ODO AT START`: official roadbook ODO at that start; usually `0.00` when the roadbook resets.
+- `FIRST ROADBOOK INSTRUCTION`: optional instruction cursor at SS start.
+- Add another stage profile when one GPX contains more than one SS.
+- Add every DZ/FZ independently. `STAGE ODO KM` follows the official displayed ODO; `ROUTE KM` follows the complete GPX.
+
+## Live correction logic
+
+- `SET DISPLAY ODO`: changes only the displayed official ODO. Route matching continues untouched.
+- `SET ODO + ROUTE`: use only at a known roadbook point. It realigns route progress and records intervening calls as missed.
+- `SET INSTRUCTION ONLY`: changes the roadbook cursor without altering ODO or route matching.
+
+This remains an assistant, not a replacement for the official roadbook, the navigator or safe judgement.

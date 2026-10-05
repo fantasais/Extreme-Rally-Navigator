@@ -1,1 +1,22 @@
-{"name":"extreme-rally-navigator","version":"0.11.0","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"next":"16.2.6","react":"19.2.6","react-dom":"19.2.6"},"devDependencies":{"@types/node":"^22","@types/react":"^19","@types/react-dom":"^19","typescript":"^5"}}
+{
+  "name": "extreme-rally-navigator",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test:core": "tsc app/core/types.ts app/core/geo.ts app/core/gpx.ts app/core/turns.ts app/core/events.ts app/core/matcher.ts --target ES2022 --module commonjs --moduleResolution node --outDir .test-build --skipLibCheck --noEmit false --isolatedModules false && node scripts/core-tests.cjs"
+  },
+  "dependencies": {
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

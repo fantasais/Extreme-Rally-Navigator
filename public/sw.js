@@ -1,39 +1,85 @@
-const CACHE="xr-navigator-v0.11";
+const CACHE = "xr-navigator-v1-20261005";
+const SHELL = [
+  "/",
+  "/manifest.webmanifest",
+  "/favicon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+];
 
-self.addEventListener("install",e=>{
+async function precacheShell() {
+  const cache = await caches.open(CACHE);
+  await Promise.allSettled(
+    SHELL.map(async (url) => {
+      const response = await fetch(url, { cache: "reload" });
+      if (response.ok) await cache.put(url, response);
+    }),
+  );
+  const page = await fetch("/", { cache: "reload" });
+  if (!page.ok) return;
+  const html = await page.clone().text();
+  await cache.put("/", page);
+  const assets = [...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)]
+    .map((match) => match[1])
+    .filter((url) => url.startsWith("/_next/static/"));
+  await Promise.allSettled(
+    [...new Set(assets)].map(async (url) => {
+      const response = await fetch(url, { cache: "reload" });
+      if (response.ok) await cache.put(url, response);
+    }),
+  );
+}
+
+self.addEventListener("install", (event) => {
   self.skipWaiting();
-  e.waitUntil(
-    caches.open(CACHE).then(c=>
-      c.addAll(["/","/manifest.webmanifest","/favicon.svg"])
-    )
+  event.waitUntil(precacheShell());
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))),
+      ),
+      self.clients.claim(),
+    ]),
   );
 });
 
-self.addEventListener("activate",e=>
-  e.waitUntil(
-    Promise.all([
-      caches.keys().then(keys=>
-        Promise.all(
-          keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))
-        )
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(
+      caches.match(event.request).then(
+        (cached) => cached || fetch(event.request).then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            return caches.open(CACHE)
+              .then((cache) => cache.put(event.request, copy))
+              .then(() => response);
+          }
+          return response;
+        }),
       ),
-      self.clients.claim()
-    ])
-  )
-);
-
-self.addEventListener("fetch",e=>{
-  if(e.request.method!=="GET") return;
-
-  e.respondWith(
-    fetch(e.request)
-      .then(r=>{
-        const copy=r.clone();
-        caches.open(CACHE).then(c=>c.put(e.request,copy));
-        return r;
+    );
+    return;
+  }
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
       })
-      .catch(()=>
-        caches.match(e.request).then(r=>r||caches.match("/"))
-      )
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        if (event.request.mode === "navigate") return caches.match("/");
+        return Response.error();
+      }),
   );
 });

@@ -6,6 +6,8 @@
       "dom.iterable",
       "esnext"
     ],
+    "allowJs": false,
+    "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -20,8 +22,11 @@
         "name": "next"
       }
     ],
-    "allowJs": true,
-    "skipLibCheck": true
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
   },
   "include": [
     "next-env.d.ts",

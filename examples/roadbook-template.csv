@@ -1,0 +1,7 @@
+number,stage_km,label,note,kind,heading
+001,0.00,SS START,Reset official ODO,START,
+002,1.42,Sharp right,Keep in,ROADBOOK,90
+003,17.69,DZ,30 km/h zone begins,DZ,
+004,27.97,FZ,Speed zone ends,FZ,
+005,42.30,FLYING FINISH,Continue to stop control,FINISH,
+006,42.65,STOP CONTROL,Hand in time card,STOP,

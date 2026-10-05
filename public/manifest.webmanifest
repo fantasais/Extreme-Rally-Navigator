@@ -1,1 +1,25 @@
-{"name":"Extreme Rally Navigator","short_name":"XR Navigator","description":"Offline GPX navigation assistant for extreme rallies","start_url":"/","display":"standalone","background_color":"#070908","theme_color":"#d9ff43","orientation":"portrait-primary","icons":[{"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{
+  "name": "Extreme Rally Navigator",
+  "short_name": "XR Navigator",
+  "description": "Offline rally navigation and roadbook assistant",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090a0c",
+  "theme_color": "#090a0c",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
