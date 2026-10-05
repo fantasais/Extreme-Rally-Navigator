@@ -64,8 +64,8 @@ import type {
   ZoneDefinition,
 } from "./core/types";
 
-const APP_VERSION = "1.0.0";
-const BUILD_ID = "2026.10.05.1";
+const APP_VERSION = "1.0.1";
+const BUILD_ID = "2026.10.05.2";
 const SELECTED_ROUTE_KEY = "xr-v1-selected-route";
 const END_HOLD_MS = 1_000;
 
@@ -1264,32 +1264,68 @@ export default function NavigatorApp() {
                     </select>
                   </label>
                   <div className="route-title"><strong>{selectedRoute.name}</strong><span>{selectedRoute.direction}</span></div>
-                  <div className="metric-grid four">
+                  <div className="metric-grid route-metrics">
                     <div><span>DISTANCE</span><strong>{(selectedRoute.quality.totalDistance / 1_000).toFixed(1)}</strong><small>km</small></div>
-                    <div><span>POINTS</span><strong>{selectedRoute.quality.pointCount}</strong></div>
                     <div><span>ROADBOOK</span><strong>{selectedRoute.instructions.length}</strong></div>
                     <div><span>CALLS</span><strong>{selectedTurns.length}</strong></div>
                   </div>
-                  <div className={`quality-strip ${selectedRoute.quality.maximumGap > 250 ? "warning" : ""}`}>
-                    <span>GPX QUALITY</span>
-                    <strong>{selectedRoute.quality.gapsOver140m} sparse gaps</strong>
-                    <b>max {Math.round(selectedRoute.quality.maximumGap)}m</b>
-                  </div>
-                  {selectedStage && <RoutePreview route={selectedRoute} stage={selectedStage} />}
-                  <div className="two-actions">
-                    <button className="secondary-action" disabled={setupLocked} onClick={createReverse}>CREATE REVERSE</button>
-                    <button className="secondary-action" disabled={setupLocked} onClick={() => roadbookInputRef.current?.click()}>IMPORT ROADBOOK CSV</button>
-                  </div>
-                  <p className="helper">CSV columns: number, route_km or stage_km; optional label, note, kind and heading.</p>
                 </>
               )}
             </section>
 
             {selectedRoute && selectedConfig && selectedStage && (
               <>
+                <section className="panel setup-stage-panel">
+                  <div className="panel-heading">
+                    <div><span>STAGE</span><h2>Chosen profile</h2></div>
+                  </div>
+                  <label className="field">CHOSEN STAGE
+                    <select disabled={setupLocked} value={selectedStage.id} onChange={(event) => commitConfig({ ...selectedConfig, selectedStageId: event.target.value })}>
+                      {selectedConfig.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="field">STAGE NAME
+                    <input disabled={setupLocked} value={selectedStage.name} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, name: event.target.value }))} />
+                  </label>
+                </section>
+
+                <section className="panel start-panel setup-start-panel">
+                  <div className="panel-heading">
+                    <div><span>START</span><h2>Official clock</h2></div>
+                  </div>
+                  <label className="field">OFFICIAL START TIME
+                    <input disabled={setupLocked} type="datetime-local" step="1" value={selectedStage.officialStart} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, officialStart: event.target.value }))} />
+                  </label>
+                  <div className="stage-ready"><span>READY</span><strong>{selectedStage.name}</strong><p>Stage ODO {selectedStage.startOdoKm.toFixed(2)} km · {selectedStage.zones.length} zone{selectedStage.zones.length === 1 ? "" : "s"}</p></div>
+                  <div className="two-actions arm-actions">
+                    <button className="primary-action" disabled={setupLocked} onClick={() => void beginStage("armed")}>ARM OFFICIAL START</button>
+                    <button className="secondary-action" disabled={setupLocked} onClick={() => void beginStage("now")}>START NOW</button>
+                  </div>
+                </section>
+
+                <details className="advanced-setup">
+                  <summary><span>ADVANCED SETUP</span><b>Roadbook, route direction, stage limits and DZ/FZ</b></summary>
+                  <div className="advanced-stack">
+                    <section className="panel">
+                      <div className="panel-heading">
+                        <div><span>ROUTE TOOLS</span><h2>Preview and roadbook</h2></div>
+                      </div>
+                      <div className={`quality-strip ${selectedRoute.quality.maximumGap > 250 ? "warning" : ""}`}>
+                        <span>GPX QUALITY</span>
+                        <strong>{selectedRoute.quality.gapsOver140m} sparse gaps</strong>
+                        <b>max {Math.round(selectedRoute.quality.maximumGap)}m</b>
+                      </div>
+                      <RoutePreview route={selectedRoute} stage={selectedStage} />
+                      <div className="two-actions">
+                        <button className="secondary-action" disabled={setupLocked} onClick={createReverse}>CREATE REVERSE</button>
+                        <button className="secondary-action" disabled={setupLocked} onClick={() => roadbookInputRef.current?.click()}>IMPORT ROADBOOK CSV</button>
+                      </div>
+                      <p className="helper">CSV columns: number, route_km or stage_km; optional label, note, kind and heading.</p>
+                    </section>
+
                 <section className="panel">
                   <div className="panel-heading">
-                    <div><span>STAGE PROFILE</span><h2>Start, finish and ODO</h2></div>
+                    <div><span>STAGE LIMITS</span><h2>Route positions and ODO</h2></div>
                     <div className="panel-actions">
                       <button disabled={setupLocked || selectedConfig.stages.length <= 1} onClick={() => {
                         const remaining = selectedConfig.stages.filter((stage) => stage.id !== selectedStage.id);
@@ -1301,14 +1337,6 @@ export default function NavigatorApp() {
                       }}>+ STAGE</button>
                     </div>
                   </div>
-                  <label className="field">CHOSEN STAGE
-                    <select disabled={setupLocked} value={selectedStage.id} onChange={(event) => commitConfig({ ...selectedConfig, selectedStageId: event.target.value })}>
-                      {selectedConfig.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
-                    </select>
-                  </label>
-                  <label className="field">STAGE NAME
-                    <input disabled={setupLocked} value={selectedStage.name} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, name: event.target.value }))} />
-                  </label>
                   <div className="field-grid three">
                     <label className="field">START · ROUTE KM
                       <input disabled={setupLocked} type="number" step="0.01" value={selectedStage.startRouteKm} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, startRouteKm: Number(event.target.value) }))} />
@@ -1325,9 +1353,6 @@ export default function NavigatorApp() {
                       <option value="">AUTO FROM STAGE START</option>
                       {selectedRoute.instructions.map((instruction) => <option key={instruction.id} value={instruction.id}>{instruction.number} · {instruction.label}</option>)}
                     </select>
-                  </label>
-                  <label className="field">OFFICIAL START TIME
-                    <input disabled={setupLocked} type="datetime-local" step="1" value={selectedStage.officialStart} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, officialStart: event.target.value }))} />
                   </label>
                 </section>
 
@@ -1375,14 +1400,8 @@ export default function NavigatorApp() {
                     </div>
                   ))}
                 </section>
-
-                <section className="panel start-panel">
-                  <div className="stage-ready"><span>READY</span><strong>{selectedStage.name}</strong><p>Stage ODO begins at {selectedStage.startOdoKm.toFixed(2)} km · {selectedStage.zones.length} zone{selectedStage.zones.length === 1 ? "" : "s"}</p></div>
-                  <div className="two-actions">
-                    <button className="primary-action" disabled={setupLocked} onClick={() => void beginStage("armed")}>ARM OFFICIAL START</button>
-                    <button className="secondary-action" disabled={setupLocked} onClick={() => void beginStage("now")}>START NOW</button>
                   </div>
-                </section>
+                </details>
               </>
             )}
           </div>
@@ -1401,57 +1420,51 @@ export default function NavigatorApp() {
                   <div className="odo"><span>STAGE ODO</span><strong>{(displayedStageOdo / 1_000).toFixed(2)}</strong><small>km</small></div>
                   <div className="speed"><span>SPEED</span><strong>{Math.round(displaySpeed)}</strong><small>km/h</small></div>
                   <div className="minor"><span>STAGE TIME</span><strong>{formatDuration(elapsedSeconds)}</strong></div>
-                  <div className="minor"><span>GPS / MATCH</span><strong>{gpsAccuracy === null ? "—" : `±${Math.round(gpsAccuracy)}m`} · {match.status}</strong></div>
+                  <div className="minor"><span>GPS ACCURACY</span><strong>{gpsAccuracy === null ? "—" : `±${Math.round(gpsAccuracy)}m`}</strong></div>
                 </section>
+                {activeZoneDisplay && (() => {
+                  const { zone, evidence } = activeZoneDisplay;
+                  const zoneDistance = zone.officialDistanceKm
+                    ? zone.officialDistanceKm * 1_000
+                    : zone.finishDistance - zone.startDistance;
+                  const target = zoneDistance / (zone.speedLimitKph / 3.6);
+                  const remaining = evidence.phase === "ACTIVE"
+                    ? zone.finishDistance - extrapolatedRouteDistance
+                    : zone.startDistance - extrapolatedRouteDistance;
+                  return <section className={`live-zone ${evidence.phase.toLowerCase()} ${evidence.phase === "ACTIVE" && displaySpeed > zone.speedLimitKph + 1 ? "over" : ""}`}>
+                    <div><span>{zone.name}</span><strong>{evidence.phase === "ARMED" ? "DZ AHEAD" : evidence.phase === "ACTIVE" ? "DZ ACTIVE" : "FZ COMPLETE"}</strong><b>{routeReliable ? formatDistance(remaining) : "POSITION ?"}</b></div>
+                    <div><span>LIMIT</span><strong>{zone.speedLimitKph}</strong><small>km/h</small></div>
+                    <div><span>{evidence.phase === "ACTIVE" ? "ZONE TIME" : "TARGET"}</span><strong>{formatDuration(evidence.elapsedSeconds ?? target)}</strong>{evidence.phase === "ACTIVE" && <small>/ {formatDuration(target)}</small>}</div>
+                  </section>;
+                })()}
+
                 {match.status === "OFF_ROUTE" || match.status === "REJOIN_CONFIRMATION" ? (
-                  <section className="recovery-card">
+                  <section className="recovery-card rally-primary">
                     <span>{match.status === "REJOIN_CONFIRMATION" ? "REJOIN FOUND" : "OFF ROUTE"}</span>
                     <div className="recovery-arrow">{recovery.arrow}</div>
                     <strong>{recovery.label}</strong>
                     <b>{formatDistance(match.nearestOffset)} TO GPX</b>
-                    <small>STRAIGHT-LINE BEARING · CHOOSE A SAFE ROAD</small>
+                    <small>BEARING ONLY · CHOOSE A SAFE ROAD</small>
                     {match.status === "REJOIN_CONFIRMATION" && (
-                      <button onClick={acceptRejoin}>ACCEPT REJOIN AT {((match.rejoinDistance || 0) / 1_000).toFixed(2)} KM</button>
+                      <button onClick={acceptRejoin}>ACCEPT REJOIN · {((match.rejoinDistance || 0) / 1_000).toFixed(2)} KM</button>
                     )}
-                    <div className="recovery-actions">
-                      <button className="correction-action" onClick={openCorrection}>SET ODO / INSTRUCTION</button>
-                      <button className={`hold-end-action ${endHoldActive ? "holding" : ""}`} onPointerDown={beginEndHold} onPointerUp={cancelEndHold} onPointerLeave={cancelEndHold} onPointerCancel={cancelEndHold} onContextMenu={(event) => event.preventDefault()}>{endHoldActive ? "KEEP HOLDING…" : "HOLD 1 SEC TO END"}</button>
-                    </div>
                   </section>
                 ) : (
-                  <>
-                    {activeZoneDisplay && (() => {
-                      const { zone, evidence } = activeZoneDisplay;
-                      const zoneDistance = zone.officialDistanceKm
-                        ? zone.officialDistanceKm * 1_000
-                        : zone.finishDistance - zone.startDistance;
-                      const target = zoneDistance / (zone.speedLimitKph / 3.6);
-                      const remaining = evidence.phase === "ACTIVE"
-                        ? zone.finishDistance - extrapolatedRouteDistance
-                        : zone.startDistance - extrapolatedRouteDistance;
-                      return <section className={`live-zone ${evidence.phase.toLowerCase()} ${evidence.phase === "ACTIVE" && displaySpeed > zone.speedLimitKph + 1 ? "over" : ""}`}>
-                        <div><span>{zone.name}</span><strong>{evidence.phase === "ARMED" ? "DZ AHEAD" : evidence.phase === "ACTIVE" ? "DZ ACTIVE" : "FZ COMPLETE"}</strong><b>{routeReliable ? formatDistance(remaining) : "POSITION ?"}</b></div>
-                        <div><span>LIMIT</span><strong>{zone.speedLimitKph}</strong><small>km/h</small></div>
-                        <div><span>{evidence.phase === "ACTIVE" ? "ZONE TIME" : "TARGET"}</span><strong>{formatDuration(evidence.elapsedSeconds ?? target)}</strong>{evidence.phase === "ACTIVE" && <small>/ {formatDuration(target)}</small>}</div>
-                      </section>;
-                    })()}
-
-                    <section className={`turn-card ${!routeReliable ? "unreliable" : ""}`}>
-                      <div className="turn-meta"><span>{turnActive ? "UPCOMING TURN" : "CONTINUE"}</span>{upcomingTurn && <b>{upcomingTurn.confidence} · {upcomingTurn.source}</b>}</div>
-                      <div className="turn-main"><div className="turn-arrow">{turnArrow}</div><div><strong>{turnActive && upcomingTurn ? `${upcomingTurn.severity} ${upcomingTurn.direction}` : "CONTINUE"}</strong><b>{!routeReliable ? "DISTANCE UNRELIABLE" : upcomingTurn ? formatDistance(Math.max(0, turnDistance || 0)) : "ROUTE COMPLETE"}</b></div></div>
-                    </section>
-
-                    <div className="lower-calls">
-                      <section className="next-card"><span>NEXT</span><strong>{followingTurn ? `${followingTurn.severity} ${followingTurn.direction}` : "NO FOLLOWING CALL"}</strong><b>{followingTurn && upcomingTurn ? `+${formatDistance(followingTurn.distance - upcomingTurn.distance)}` : "—"}</b></section>
-                      <section className="roadbook-card"><span>ROADBOOK</span><strong>{nextInstruction?.number || "FINISH"}</strong><p>{nextInstruction?.note || nextInstruction?.label || "Use physical roadbook"}</p><b>{routeReliable && nextInstruction ? formatDistance(nextInstruction.routeDistance - extrapolatedRouteDistance) : "UNRELIABLE"}</b></section>
-                    </div>
-
-                    <div className="rally-actions">
-                      <button className="correction-action" onClick={openCorrection}>SET ODO / INSTRUCTION</button>
-                      <button className={`hold-end-action ${endHoldActive ? "holding" : ""}`} onPointerDown={beginEndHold} onPointerUp={cancelEndHold} onPointerLeave={cancelEndHold} onPointerCancel={cancelEndHold} onContextMenu={(event) => event.preventDefault()}>{endHoldActive ? "KEEP HOLDING…" : "HOLD 1 SEC TO END"}</button>
-                    </div>
-                  </>
+                  <section className={`turn-card rally-primary ${!routeReliable ? "unreliable" : ""}`}>
+                    <div className="turn-meta"><span>{turnActive ? "UPCOMING TURN" : "CONTINUE"}</span></div>
+                    <div className="turn-main"><div className="turn-arrow">{turnArrow}</div><div><strong>{turnActive && upcomingTurn ? `${upcomingTurn.severity} ${upcomingTurn.direction}` : "CONTINUE"}</strong><b>{!routeReliable ? "DISTANCE UNRELIABLE" : upcomingTurn ? formatDistance(Math.max(0, turnDistance || 0)) : "ROUTE COMPLETE"}</b></div></div>
+                  </section>
                 )}
+
+                <div className="lower-calls">
+                  <section className="next-card"><span>NEXT</span><strong>{followingTurn ? `${followingTurn.severity} ${followingTurn.direction}` : "NO FOLLOWING CALL"}</strong><b>{followingTurn && upcomingTurn ? `+${formatDistance(followingTurn.distance - upcomingTurn.distance)}` : "—"}</b></section>
+                  <section className="roadbook-card"><span>ROADBOOK</span><strong>{nextInstruction?.number || "FINISH"}</strong><p>{nextInstruction?.note || nextInstruction?.label || "Use physical roadbook"}</p><b>{routeReliable && nextInstruction ? formatDistance(nextInstruction.routeDistance - extrapolatedRouteDistance) : "UNRELIABLE"}</b></section>
+                </div>
+
+                <div className="rally-actions">
+                  <button className="correction-action" onClick={openCorrection}>SET ODO</button>
+                  <button className={`hold-end-action ${endHoldActive ? "holding" : ""}`} onPointerDown={beginEndHold} onPointerUp={cancelEndHold} onPointerLeave={cancelEndHold} onPointerCancel={cancelEndHold} onContextMenu={(event) => event.preventDefault()}>{endHoldActive ? "KEEP HOLDING…" : "HOLD 1 SEC TO END"}</button>
+                </div>
               </>
             )}
             {stageStatus === "finished" && stageSummary && (
@@ -1479,3 +1492,4 @@ export default function NavigatorApp() {
     </main>
   );
 }
+
