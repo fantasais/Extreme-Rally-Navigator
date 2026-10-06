@@ -63,8 +63,8 @@ import type {
   ZoneDefinition,
 } from "./core/types";
 
-const APP_VERSION = "1.0.3";
-const BUILD_ID = "2026.10.06.2";
+const APP_VERSION = "1.0.5";
+const BUILD_ID = "2026.10.06.4";
 const SELECTED_ROUTE_KEY = "xr-v1-selected-route";
 const END_HOLD_MS = 1_000;
 
@@ -1260,23 +1260,27 @@ export default function NavigatorApp() {
               <>
                 <section className="panel setup-limits-panel">
                   <div className="panel-heading">
-                    <div><span>STAGE LIMITS</span><h2>{selectedStage.name}</h2></div>
+                    <div><span>STAGE LIMITS</span><h2>Start and finish</h2></div>
                     <div className="panel-actions">
                       <button disabled={setupLocked || selectedConfig.stages.length <= 1} onClick={() => {
                         const remaining = selectedConfig.stages.filter((stage) => stage.id !== selectedStage.id);
                         commitConfig({ ...selectedConfig, stages: remaining, selectedStageId: remaining[0].id });
-                      }}>REMOVE</button>
+                      }}>REMOVE SS</button>
                       <button disabled={setupLocked} onClick={() => {
-                        const added = { ...defaultStage(selectedRoute), id: `stage-${crypto.randomUUID()}`, name: `SPECIAL STAGE ${selectedConfig.stages.length + 1}` };
+                        const added = { ...defaultStage(selectedRoute), id: `stage-${crypto.randomUUID()}`, name: `SS ${selectedConfig.stages.length + 1}` };
                         commitConfig({ ...selectedConfig, stages: [...selectedConfig.stages, added], selectedStageId: added.id });
                       }}>+ SS</button>
                     </div>
                   </div>
 
-                  <label className="field compact-stage-select">SELECT SS
-                    <select disabled={setupLocked} value={selectedStage.id} onChange={(event) => commitConfig({ ...selectedConfig, selectedStageId: event.target.value })}>
-                      {selectedConfig.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
-                    </select>
+                  {selectedConfig.stages.length > 1 && <label className="field compact-stage-select">SELECT SS
+                      <select disabled={setupLocked} value={selectedStage.id} onChange={(event) => commitConfig({ ...selectedConfig, selectedStageId: event.target.value })}>
+                        {selectedConfig.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                      </select>
+                    </label>}
+
+                  <label className="field compact-stage-name">SS NAME
+                    <input disabled={setupLocked} value={selectedStage.name} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, name: event.target.value }))} />
                   </label>
 
                   <div className="stage-boundaries">
