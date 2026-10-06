@@ -26,7 +26,6 @@ import {
   addEmptyZone,
   defaultConfig,
   defaultStage,
-  importRoadbookCsv,
   localDateTime,
   markerRouteDistance,
   parseGpx,
@@ -64,8 +63,8 @@ import type {
   ZoneDefinition,
 } from "./core/types";
 
-const APP_VERSION = "1.0.2";
-const BUILD_ID = "2026.10.06.1";
+const APP_VERSION = "1.0.3";
+const BUILD_ID = "2026.10.06.2";
 const SELECTED_ROUTE_KEY = "xr-v1-selected-route";
 const END_HOLD_MS = 1_000;
 
@@ -224,7 +223,6 @@ export default function NavigatorApp() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
 
   const gpxInputRef = useRef<HTMLInputElement>(null);
-  const roadbookInputRef = useRef<HTMLInputElement>(null);
   const watchRef = useRef<number | null>(null);
   const simulationRef = useRef<number | null>(null);
   const endHoldRef = useRef<number | null>(null);
@@ -456,19 +454,6 @@ export default function NavigatorApp() {
       } catch (error) {
         setSetupError(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
-    }
-  };
-
-  const loadRoadbook = async (file: File | undefined) => {
-    if (!file || !selectedRoute || !selectedStage || setupLocked) return;
-    try {
-      const updated = importRoadbookCsv(selectedRoute, selectedStage, await file.text());
-      await saveRouteAndConfig(updated, selectedConfig!);
-      setRoutes((current) => current.map((route) => route.id === updated.id ? updated : route));
-      setNotice(`${updated.instructions.length} roadbook instructions imported`);
-      setSetupError("");
-    } catch (error) {
-      setSetupError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -1228,17 +1213,6 @@ export default function NavigatorApp() {
           event.target.value = "";
         }}
       />
-      <input
-        ref={roadbookInputRef}
-        hidden
-        type="file"
-        accept=".csv,text/csv"
-        onChange={(event) => {
-          void loadRoadbook(event.target.files?.[0]);
-          event.target.value = "";
-        }}
-      />
-
       <section className="screen">
         {setupError && <div className="error-banner">{setupError}</div>}
         {notice && <div className="notice-banner" onClick={() => setNotice("")}>{notice}</div>}
@@ -1269,23 +1243,68 @@ export default function NavigatorApp() {
                     <div><span>ROADBOOK</span><strong>{selectedRoute.instructions.length}</strong></div>
                     <div><span>CALLS</span><strong>{selectedTurns.length}</strong></div>
                   </div>
+                  {selectedStage && <>
+                    <div className={`quality-strip ${selectedRoute.quality.maximumGap > 250 ? "warning" : ""}`}>
+                      <span>GPX QUALITY</span>
+                      <strong>{selectedRoute.quality.gapsOver140m} sparse gaps</strong>
+                      <b>max {Math.round(selectedRoute.quality.maximumGap)}m</b>
+                    </div>
+                    <RoutePreview route={selectedRoute} stage={selectedStage} />
+                    <button className="full-secondary route-reverse-action" disabled={setupLocked} onClick={createReverse}>CREATE REVERSE ROUTE</button>
+                  </>}
                 </>
               )}
             </section>
 
             {selectedRoute && selectedConfig && selectedStage && (
               <>
-                <section className="panel setup-stage-panel">
+                <section className="panel setup-limits-panel">
                   <div className="panel-heading">
-                    <div><span>STAGE</span><h2>Chosen profile</h2></div>
+                    <div><span>STAGE LIMITS</span><h2>{selectedStage.name}</h2></div>
+                    <div className="panel-actions">
+                      <button disabled={setupLocked || selectedConfig.stages.length <= 1} onClick={() => {
+                        const remaining = selectedConfig.stages.filter((stage) => stage.id !== selectedStage.id);
+                        commitConfig({ ...selectedConfig, stages: remaining, selectedStageId: remaining[0].id });
+                      }}>REMOVE</button>
+                      <button disabled={setupLocked} onClick={() => {
+                        const added = { ...defaultStage(selectedRoute), id: `stage-${crypto.randomUUID()}`, name: `SPECIAL STAGE ${selectedConfig.stages.length + 1}` };
+                        commitConfig({ ...selectedConfig, stages: [...selectedConfig.stages, added], selectedStageId: added.id });
+                      }}>+ SS</button>
+                    </div>
                   </div>
-                  <label className="field">CHOSEN STAGE
+
+                  <label className="field compact-stage-select">SELECT SS
                     <select disabled={setupLocked} value={selectedStage.id} onChange={(event) => commitConfig({ ...selectedConfig, selectedStageId: event.target.value })}>
                       {selectedConfig.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
                     </select>
                   </label>
-                  <label className="field">STAGE NAME
-                    <input disabled={setupLocked} value={selectedStage.name} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, name: event.target.value }))} />
+
+                  <div className="stage-boundaries">
+                    <div className="boundary-card start-boundary">
+                      <div className="boundary-heading"><span>START</span><strong>SS begins here</strong></div>
+                      <div className="field-grid two boundary-fields">
+                        <label className="field">GPX ROUTE KM
+                          <input disabled={setupLocked} type="number" step="0.01" value={selectedStage.startRouteKm} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, startRouteKm: Number(event.target.value) }))} />
+                        </label>
+                        <label className="field">START ODO KM
+                          <input disabled={setupLocked} type="number" step="0.01" value={selectedStage.startOdoKm} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, startOdoKm: Number(event.target.value) }))} />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="boundary-card finish-boundary">
+                      <div className="boundary-heading"><span>FINISH</span><strong>SS ends here</strong></div>
+                      <label className="field">GPX ROUTE KM · OPTIONAL
+                        <input disabled={setupLocked} type="number" step="0.01" placeholder="Use end of GPX" value={selectedStage.finishRouteKm ?? ""} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, finishRouteKm: event.target.value === "" ? undefined : Number(event.target.value) }))} />
+                      </label>
+                    </div>
+                  </div>
+
+                  <label className="field optional-roadbook">FIRST ROADBOOK INSTRUCTION · OPTIONAL
+                    <select disabled={setupLocked} value={selectedStage.startInstructionId || ""} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, startInstructionId: event.target.value || undefined }))}>
+                      <option value="">AUTO FROM SS START</option>
+                      {selectedRoute.instructions.map((instruction) => <option key={instruction.id} value={instruction.id}>{instruction.number} · {instruction.label}</option>)}
+                    </select>
                   </label>
                 </section>
 
@@ -1304,58 +1323,8 @@ export default function NavigatorApp() {
                 </section>
 
                 <details className="advanced-setup">
-                  <summary><span>ADVANCED SETUP</span><b>Roadbook, route direction, stage limits and DZ/FZ</b></summary>
+                  <summary><span>ADVANCED SETUP</span><b>DZ / FZ speed zones</b></summary>
                   <div className="advanced-stack">
-                    <section className="panel">
-                      <div className="panel-heading">
-                        <div><span>ROUTE TOOLS</span><h2>Preview and roadbook</h2></div>
-                      </div>
-                      <div className={`quality-strip ${selectedRoute.quality.maximumGap > 250 ? "warning" : ""}`}>
-                        <span>GPX QUALITY</span>
-                        <strong>{selectedRoute.quality.gapsOver140m} sparse gaps</strong>
-                        <b>max {Math.round(selectedRoute.quality.maximumGap)}m</b>
-                      </div>
-                      <RoutePreview route={selectedRoute} stage={selectedStage} />
-                      <div className="two-actions">
-                        <button className="secondary-action" disabled={setupLocked} onClick={createReverse}>CREATE REVERSE</button>
-                        <button className="secondary-action" disabled={setupLocked} onClick={() => roadbookInputRef.current?.click()}>IMPORT ROADBOOK CSV</button>
-                      </div>
-                      <p className="helper">CSV columns: number, route_km or stage_km; optional label, note, kind and heading.</p>
-                    </section>
-
-                <section className="panel">
-                  <div className="panel-heading">
-                    <div><span>STAGE LIMITS</span><h2>Route positions and ODO</h2></div>
-                    <div className="panel-actions">
-                      <button disabled={setupLocked || selectedConfig.stages.length <= 1} onClick={() => {
-                        const remaining = selectedConfig.stages.filter((stage) => stage.id !== selectedStage.id);
-                        commitConfig({ ...selectedConfig, stages: remaining, selectedStageId: remaining[0].id });
-                      }}>REMOVE</button>
-                      <button disabled={setupLocked} onClick={() => {
-                        const added = { ...defaultStage(selectedRoute), id: `stage-${crypto.randomUUID()}`, name: `SPECIAL STAGE ${selectedConfig.stages.length + 1}` };
-                        commitConfig({ ...selectedConfig, stages: [...selectedConfig.stages, added], selectedStageId: added.id });
-                      }}>+ STAGE</button>
-                    </div>
-                  </div>
-                  <div className="field-grid three">
-                    <label className="field">START · ROUTE KM
-                      <input disabled={setupLocked} type="number" step="0.01" value={selectedStage.startRouteKm} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, startRouteKm: Number(event.target.value) }))} />
-                    </label>
-                    <label className="field">FINISH · ROUTE KM
-                      <input disabled={setupLocked} type="number" step="0.01" placeholder="Optional" value={selectedStage.finishRouteKm ?? ""} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, finishRouteKm: event.target.value === "" ? undefined : Number(event.target.value) }))} />
-                    </label>
-                    <label className="field">ODO AT START
-                      <input disabled={setupLocked} type="number" step="0.01" value={selectedStage.startOdoKm} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, startOdoKm: Number(event.target.value) }))} />
-                    </label>
-                  </div>
-                  <label className="field">FIRST ROADBOOK INSTRUCTION
-                    <select disabled={setupLocked} value={selectedStage.startInstructionId || ""} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, startInstructionId: event.target.value || undefined }))}>
-                      <option value="">AUTO FROM STAGE START</option>
-                      {selectedRoute.instructions.map((instruction) => <option key={instruction.id} value={instruction.id}>{instruction.number} · {instruction.label}</option>)}
-                    </select>
-                  </label>
-                </section>
-
                 <section className="panel">
                   <div className="panel-heading">
                     <div><span>SPEED CONTROL</span><h2>DZ / FZ zones</h2></div>
@@ -1373,27 +1342,32 @@ export default function NavigatorApp() {
                           <input disabled={setupLocked} type="number" min="1" value={zone.speedLimitKph} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, zones: stage.zones.map((candidate) => candidate.id === zone.id ? { ...candidate, speedLimitKph: Number(event.target.value) } : candidate) }))} />
                         </label>
                       </div>
-                      {(["start", "finish"] as const).map((boundary) => {
-                        const marker = zone[boundary];
-                        return <div className="marker-row" key={boundary}>
-                          <label className="field">{boundary.toUpperCase()} MODE
-                            <select disabled={setupLocked} value={marker.mode} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, zones: stage.zones.map((candidate) => candidate.id === zone.id ? { ...candidate, [boundary]: { mode: event.target.value as ZoneDefinition[typeof boundary]["mode"], value: event.target.value === "INSTRUCTION" ? selectedRoute.instructions[0]?.id || "" : 0 } } : candidate) }))}>
-                              <option value="STAGE_KM">STAGE ODO KM</option>
-                              <option value="ROUTE_KM">ROUTE KM</option>
-                              <option value="INSTRUCTION">INSTRUCTION</option>
-                            </select>
-                          </label>
-                          <label className="field">{boundary.toUpperCase()} POSITION
-                            {marker.mode === "INSTRUCTION" ? (
-                              <select disabled={setupLocked} value={String(marker.value)} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, zones: stage.zones.map((candidate) => candidate.id === zone.id ? { ...candidate, [boundary]: { ...marker, value: event.target.value } } : candidate) }))}>
-                                {selectedRoute.instructions.map((instruction) => <option key={instruction.id} value={instruction.id}>{instruction.number} · {instruction.label}</option>)}
-                              </select>
-                            ) : (
-                              <input disabled={setupLocked} type="number" step="0.01" value={Number(marker.value)} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, zones: stage.zones.map((candidate) => candidate.id === zone.id ? { ...candidate, [boundary]: { ...marker, value: Number(event.target.value) } } : candidate) }))} />
-                            )}
-                          </label>
-                        </div>;
-                      })}
+                      <div className="zone-boundaries">
+                        {(["start", "finish"] as const).map((boundary) => {
+                          const marker = zone[boundary];
+                          return <div className={`boundary-card zone-${boundary}`} key={boundary}>
+                            <div className="boundary-heading"><span>{boundary === "start" ? "DZ" : "FZ"}</span><strong>{boundary === "start" ? "Zone starts" : "Zone finishes"}</strong></div>
+                            <div className="marker-row">
+                              <label className="field">POSITION TYPE
+                                <select disabled={setupLocked} value={marker.mode} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, zones: stage.zones.map((candidate) => candidate.id === zone.id ? { ...candidate, [boundary]: { mode: event.target.value as ZoneDefinition[typeof boundary]["mode"], value: event.target.value === "INSTRUCTION" ? selectedRoute.instructions[0]?.id || "" : 0 } } : candidate) }))}>
+                                  <option value="STAGE_KM">STAGE ODO KM</option>
+                                  <option value="ROUTE_KM">ROUTE KM</option>
+                                  <option value="INSTRUCTION">INSTRUCTION</option>
+                                </select>
+                              </label>
+                              <label className="field">POSITION
+                                {marker.mode === "INSTRUCTION" ? (
+                                  <select disabled={setupLocked} value={String(marker.value)} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, zones: stage.zones.map((candidate) => candidate.id === zone.id ? { ...candidate, [boundary]: { ...marker, value: event.target.value } } : candidate) }))}>
+                                    {selectedRoute.instructions.map((instruction) => <option key={instruction.id} value={instruction.id}>{instruction.number} · {instruction.label}</option>)}
+                                  </select>
+                                ) : (
+                                  <input disabled={setupLocked} type="number" step="0.01" value={Number(marker.value)} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, zones: stage.zones.map((candidate) => candidate.id === zone.id ? { ...candidate, [boundary]: { ...marker, value: Number(event.target.value) } } : candidate) }))} />
+                                )}
+                              </label>
+                            </div>
+                          </div>;
+                        })}
+                      </div>
                       <label className="field">OFFICIAL ZONE DISTANCE KM · OPTIONAL
                         <input disabled={setupLocked} type="number" step="0.01" value={zone.officialDistanceKm ?? ""} onChange={(event) => updateSelectedStage((stage) => ({ ...stage, zones: stage.zones.map((candidate) => candidate.id === zone.id ? { ...candidate, officialDistanceKm: event.target.value === "" ? undefined : Number(event.target.value) } : candidate) }))} />
                       </label>
