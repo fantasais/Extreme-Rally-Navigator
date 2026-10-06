@@ -175,7 +175,7 @@ export function defaultStage(route: RouteRecord): StageProfile {
   });
   return {
     id: `stage-${crypto.randomUUID()}`,
-    name: "SPECIAL STAGE 1",
+    name: "SS 1",
     officialStart: localDateTime(new Date(Date.now() + 5 * 60_000)),
     startRouteKm,
     finishRouteKm: finish ? finish.routeDistance / 1000 : undefined,
