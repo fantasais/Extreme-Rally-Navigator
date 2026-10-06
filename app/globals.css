@@ -418,15 +418,28 @@ button:disabled {
 
 .zone-editor {
   margin-top: 12px;
-  padding: 12px;
+  padding: 11px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #0b0d0f;
+  background: #090b0d;
 }
 
 .zone-editor-title {
-  margin: 0;
+  margin: 0 0 2px;
   color: var(--amber);
+}
+
+.zone-editor-title strong {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zone-editor-title button {
+  min-height: 34px;
+  padding-inline: 9px;
+  font-size: 10px;
 }
 
 .zone-editor-title button,
@@ -439,9 +452,95 @@ button:disabled {
   border-color: rgba(145, 243, 49, .34);
 }
 
-.setup-stage-panel,
+.setup-limits-panel,
 .setup-start-panel {
   box-shadow: none;
+}
+
+.setup-limits-panel {
+  border-color: rgba(44, 201, 243, .34);
+}
+
+.compact-stage-select {
+  margin: 0 0 10px;
+}
+
+.stage-boundaries,
+.zone-boundaries {
+  display: grid;
+  gap: 8px;
+}
+
+.boundary-card {
+  overflow: hidden;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 10px;
+  background: #0d1012;
+}
+
+.start-boundary {
+  border-left-color: var(--lime);
+}
+
+.finish-boundary {
+  border-left-color: var(--cyan);
+}
+
+.zone-start {
+  border-left-color: var(--amber);
+}
+
+.zone-finish {
+  border-left-color: var(--cyan);
+}
+
+.boundary-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 8px;
+}
+
+.boundary-heading span {
+  color: var(--lime);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .13em;
+}
+
+.finish-boundary .boundary-heading span,
+.zone-finish .boundary-heading span {
+  color: var(--cyan);
+}
+
+.zone-start .boundary-heading span {
+  color: var(--amber);
+}
+
+.boundary-heading strong {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.boundary-card .field,
+.boundary-card .marker-row {
+  margin-top: 0;
+}
+
+.boundary-fields {
+  gap: 8px;
+}
+
+.zone-boundaries {
+  margin-top: 10px;
+}
+
+.optional-roadbook {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .advanced-setup {
