@@ -104,6 +104,7 @@ button:disabled {
 .route-title span,
 .stage-ready span,
 .live-metrics span,
+.drive-readout span,
 .turn-meta span,
 .next-card > span,
 .roadbook-card > span,
@@ -711,6 +712,81 @@ button:disabled {
   white-space: nowrap;
 }
 
+.drive-readout {
+  display: grid;
+  grid-template-columns: 1.15fr .85fr;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--line);
+}
+
+.drive-readout > div {
+  min-width: 0;
+  padding: 11px 12px 9px;
+  background: #101214;
+}
+
+.drive-readout > div:last-child {
+  border-left: 1px solid var(--line);
+  background: #151815;
+}
+
+.drive-readout > div > span {
+  display: block;
+  font-size: 11px;
+}
+
+.drive-readout > div > strong {
+  display: inline-block;
+  max-width: calc(100% - 28px);
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--lime);
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(55px, 16vw, 78px);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: .9;
+  letter-spacing: -.06em;
+  text-overflow: clip;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.drive-readout small {
+  margin-left: 5px;
+  color: #b2b7b2;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.readout-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+.readout-meta span {
+  flex: 1 1 auto;
+  font-size: 9px;
+}
+
+.readout-meta b {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(17px, 4.7vw, 21px);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .live-zone {
   display: grid;
   grid-template-columns: 1.25fr .55fr .8fr;
@@ -737,7 +813,8 @@ button:disabled {
 .live-zone strong {
   overflow: hidden;
   color: var(--amber);
-  font-size: clamp(18px, 5vw, 26px);
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(20px, 5.5vw, 28px);
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -745,7 +822,7 @@ button:disabled {
 
 .live-zone b,
 .live-zone small {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .live-zone.active {
@@ -768,9 +845,12 @@ button:disabled {
 }
 
 .turn-card {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   min-height: 210px;
-  padding: 10px 12px;
+  padding: 11px 12px 14px;
   border: 1px solid #3f454d;
   border-radius: 15px;
   background: linear-gradient(150deg, #14171a, #0c0e10);
@@ -782,6 +862,7 @@ button:disabled {
 
 .turn-meta {
   display: flex;
+  width: 100%;
   justify-content: space-between;
   gap: 10px;
 }
@@ -792,95 +873,132 @@ button:disabled {
 }
 
 .turn-main {
-  display: grid;
-  grid-template-columns: minmax(100px, .72fr) minmax(0, 1.28fr);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  gap: 5px;
 }
 
 .turn-arrow {
   color: var(--lime);
   font-family: Arial, sans-serif;
-  font-size: clamp(105px, 31vw, 165px);
+  font-size: clamp(88px, 27vw, 140px);
   font-weight: 900;
   line-height: .8;
   text-align: center;
 }
 
 .turn-main > div:last-child {
-  display: grid;
-  gap: 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+  text-align: center;
 }
 
 .turn-main strong {
-  font-size: clamp(30px, 8.5vw, 48px);
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(31px, 9vw, 46px);
+  font-weight: 900;
   line-height: .9;
   text-transform: uppercase;
 }
 
 .turn-main b {
   color: var(--lime);
-  font-size: clamp(27px, 7.7vw, 43px);
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(50px, 15vw, 76px);
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
+  line-height: .9;
+  letter-spacing: -.055em;
 }
 
 .turn-card.unreliable .turn-main b {
   color: var(--amber);
-  font-size: clamp(17px, 5vw, 24px);
+  font-size: clamp(21px, 5.6vw, 29px);
 }
 
 .lower-calls {
   display: grid;
-  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
 }
 
 .next-card,
 .roadbook-card {
   display: grid;
   min-width: 0;
-  min-height: 72px;
-  align-content: center;
-  gap: 3px;
-  padding: 8px 10px;
+  min-height: 60px;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 11px;
   background: #101214;
 }
 
-.next-card strong,
-.roadbook-card strong {
+.next-card {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.next-card strong {
   overflow: hidden;
-  font-size: clamp(15px, 4.4vw, 21px);
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(19px, 5vw, 24px);
+  font-weight: 900;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.next-card b,
-.roadbook-card b {
+.next-card b {
   color: var(--lime);
-  font-size: 12px;
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(18px, 4.8vw, 22px);
+  font-weight: 900;
 }
 
 .roadbook-card {
-  grid-template-columns: auto 1fr auto;
-  grid-template-rows: auto auto;
-  column-gap: 8px;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  min-height: 66px;
 }
 
 .roadbook-card > span {
-  grid-column: 1 / -1;
+  grid-column: auto;
+}
+
+.roadbook-card strong {
+  overflow: hidden;
+  color: var(--lime);
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(22px, 6vw, 28px);
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .roadbook-card p {
   overflow: hidden;
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: clamp(12px, 3.4vw, 15px);
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roadbook-card b {
+  color: var(--lime);
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
+  font-size: clamp(17px, 4.6vw, 21px);
+  font-weight: 900;
   white-space: nowrap;
 }
 
@@ -892,7 +1010,8 @@ button:disabled {
 
 .correction-action,
 .hold-end-action {
-  min-height: 40px;
+  min-height: 43px;
+  font-size: 11px;
 }
 
 .correction-action {
@@ -1133,14 +1252,40 @@ button:disabled {
   overflow: hidden;
 }
 
-.stage-active .topbar,
-.stage-active .nav-tabs {
+.stage-active .topbar {
+  display: flex;
+  min-height: 54px;
+  padding: 7px 10px;
+}
+
+.stage-active .brand span,
+.stage-active .install-pill {
   display: none;
 }
 
+.stage-active .brand h1 {
+  font-size: 18px;
+}
+
+.stage-active .gps-pill {
+  min-height: 34px;
+  padding-inline: 10px;
+  font-size: 10px;
+}
+
+.stage-active .nav-tabs {
+  top: 54px;
+  display: grid;
+}
+
+.stage-active .nav-tabs button {
+  min-height: 40px;
+  font-size: 11px;
+}
+
 .stage-active .screen {
-  height: 100dvh;
-  padding: max(6px, env(safe-area-inset-top, 0px)) 7px calc(6px + var(--safe-bottom));
+  height: calc(100dvh - 94px);
+  padding: 7px 8px calc(7px + var(--safe-bottom));
   overflow: hidden;
 }
 
@@ -1151,7 +1296,7 @@ button:disabled {
   gap: 6px;
 }
 
-.stage-active .live-metrics,
+.stage-active .drive-readout,
 .stage-active .live-zone,
 .stage-active .lower-calls,
 .stage-active .rally-actions {
@@ -1161,10 +1306,6 @@ button:disabled {
 .stage-active .rally-primary {
   flex: 1 1 auto;
   min-height: 0;
-}
-
-.stage-active .turn-card {
-  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .stage-active .turn-main {
@@ -1177,9 +1318,9 @@ button:disabled {
 }
 
 .stage-active .rally-actions button {
-  min-height: 40px;
+  min-height: 43px;
   padding-block: 0;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 @media (max-width: 430px) {
@@ -1205,13 +1346,16 @@ button:disabled {
 }
 
 @media (max-height: 760px) {
-  .stage-active .live-metrics {
-    grid-template-rows: 76px 36px;
+  .stage-active .drive-readout > div {
+    padding-block: 9px 7px;
   }
 
-  .stage-active .odo strong,
-  .stage-active .speed strong {
-    font-size: clamp(48px, 17vw, 68px);
+  .stage-active .drive-readout > div > strong {
+    font-size: clamp(52px, 15vw, 68px);
+  }
+
+  .stage-active .readout-meta b {
+    font-size: clamp(16px, 4.4vw, 19px);
   }
 
   .stage-active .live-zone {
@@ -1219,32 +1363,54 @@ button:disabled {
   }
 
   .stage-active .turn-arrow {
-    font-size: clamp(84px, 26vw, 120px);
+    font-size: clamp(78px, 24vw, 108px);
   }
 
   .stage-active .turn-main strong {
-    font-size: clamp(25px, 7.4vw, 38px);
+    font-size: clamp(28px, 8vw, 38px);
   }
 
   .stage-active .turn-main b {
-    font-size: clamp(23px, 6.8vw, 34px);
+    font-size: clamp(48px, 14vw, 62px);
   }
 
   .stage-active .next-card,
   .stage-active .roadbook-card {
-    min-height: 66px;
-    padding-block: 5px;
+    min-height: 57px;
+    padding-block: 7px;
   }
 
   .stage-active .correction-action,
   .stage-active .hold-end-action {
-    min-height: 39px;
-    font-size: 10px;
+    min-height: 40px;
+    font-size: 11px;
   }
 }
 
 @media (max-height: 660px) {
+  .stage-active .topbar {
+    min-height: 48px;
+    padding-block: 5px;
+  }
+
+  .stage-active .brand h1 {
+    font-size: 17px;
+  }
+
+  .stage-active .gps-pill {
+    min-height: 31px;
+  }
+
+  .stage-active .nav-tabs {
+    top: 48px;
+  }
+
+  .stage-active .nav-tabs button {
+    min-height: 36px;
+  }
+
   .stage-active .screen {
+    height: calc(100dvh - 84px);
     padding-block: 5px;
   }
 
@@ -1252,13 +1418,25 @@ button:disabled {
     gap: 5px;
   }
 
-  .stage-active .live-metrics {
-    grid-template-rows: 67px 32px;
+  .stage-active .drive-readout > div {
+    padding: 7px 9px 6px;
   }
 
-  .stage-active .odo strong,
-  .stage-active .speed strong {
-    font-size: clamp(42px, 15vw, 58px);
+  .stage-active .drive-readout > div > strong {
+    font-size: clamp(47px, 14vw, 58px);
+  }
+
+  .stage-active .drive-readout > div > span {
+    font-size: 9px;
+  }
+
+  .stage-active .readout-meta {
+    margin-top: 5px;
+    padding-top: 5px;
+  }
+
+  .stage-active .readout-meta b {
+    font-size: 15px;
   }
 
   .stage-active .live-zone {
@@ -1270,28 +1448,29 @@ button:disabled {
   }
 
   .stage-active .turn-arrow {
-    font-size: clamp(70px, 22vw, 94px);
+    font-size: clamp(63px, 20vw, 82px);
   }
 
   .stage-active .turn-main strong {
-    font-size: clamp(21px, 6.3vw, 30px);
+    font-size: clamp(24px, 7vw, 30px);
   }
 
   .stage-active .turn-main b {
-    font-size: clamp(19px, 5.8vw, 27px);
+    font-size: clamp(42px, 12.5vw, 52px);
   }
 
   .stage-active .next-card,
   .stage-active .roadbook-card {
-    min-height: 57px;
+    min-height: 52px;
+    padding-block: 6px;
   }
 
   .stage-active .roadbook-card p {
-    display: none;
+    font-size: 11px;
   }
 
   .stage-active .rally-actions button {
-    min-height: 36px;
+    min-height: 37px;
   }
 
   .stage-active .recovery-arrow {
