@@ -417,11 +417,12 @@ button:disabled {
 }
 
 .zone-editor {
-  margin-top: 12px;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #090b0d;
+  margin-top: 14px;
+  padding: 15px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 
 .zone-editor-title {
@@ -462,6 +463,10 @@ button:disabled {
 }
 
 .compact-stage-select {
+  margin: 0 0 8px;
+}
+
+.compact-stage-name {
   margin: 0 0 10px;
 }
 
@@ -469,15 +474,16 @@ button:disabled {
 .zone-boundaries {
   display: grid;
   gap: 8px;
+  padding-block: 4px;
 }
 
 .boundary-card {
   overflow: hidden;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-left-width: 4px;
-  border-radius: 10px;
-  background: #0d1012;
+  padding: 7px 0 7px 11px;
+  border: 0;
+  border-left: 4px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 
 .start-boundary {
@@ -535,6 +541,13 @@ button:disabled {
 
 .zone-boundaries {
   margin-top: 10px;
+  border-block: 1px solid rgba(48, 52, 58, .7);
+}
+
+.zone-boundaries .boundary-card + .boundary-card,
+.stage-boundaries .boundary-card + .boundary-card {
+  padding-top: 10px;
+  border-top: 1px solid rgba(48, 52, 58, .55);
 }
 
 .optional-roadbook {
@@ -594,13 +607,21 @@ button:disabled {
 
 .advanced-stack {
   display: grid;
-  gap: 10px;
-  padding: 0 10px 10px;
+  gap: 0;
+  padding: 0;
   border-top: 1px solid var(--line);
 }
 
 .advanced-stack > .panel:first-child {
-  margin-top: 10px;
+  margin-top: 0;
+}
+
+.advanced-stack > .panel {
+  padding: 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .stage-ready {
