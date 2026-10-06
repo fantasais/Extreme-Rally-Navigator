@@ -64,8 +64,8 @@ import type {
   ZoneDefinition,
 } from "./core/types";
 
-const APP_VERSION = "1.0.1";
-const BUILD_ID = "2026.10.05.2";
+const APP_VERSION = "1.0.2";
+const BUILD_ID = "2026.10.06.1";
 const SELECTED_ROUTE_KEY = "xr-v1-selected-route";
 const END_HOLD_MS = 1_000;
 
@@ -1416,11 +1416,17 @@ export default function NavigatorApp() {
             {stageStatus === "running" && session && activeRoute && (
               <>
                 {zoneAnnouncement && <div className={`zone-flash ${zoneAnnouncement.toLowerCase()}`}><strong>{zoneAnnouncement}</strong><span>{zoneAnnouncement === "DZ" ? "SPEED ZONE START" : "SPEED ZONE FINISH"}</span></div>}
-                <section className="live-metrics">
-                  <div className="odo"><span>STAGE ODO</span><strong>{(displayedStageOdo / 1_000).toFixed(2)}</strong><small>km</small></div>
-                  <div className="speed"><span>SPEED</span><strong>{Math.round(displaySpeed)}</strong><small>km/h</small></div>
-                  <div className="minor"><span>STAGE TIME</span><strong>{formatDuration(elapsedSeconds)}</strong></div>
-                  <div className="minor"><span>GPS ACCURACY</span><strong>{gpsAccuracy === null ? "—" : `±${Math.round(gpsAccuracy)}m`}</strong></div>
+                <section className="drive-readout">
+                  <div>
+                    <span>STAGE ODO</span>
+                    <strong>{(displayedStageOdo / 1_000).toFixed(2)}</strong><small>km</small>
+                    <div className="readout-meta"><span>STAGE TIME</span><b>{formatDuration(elapsedSeconds)}</b></div>
+                  </div>
+                  <div>
+                    <span>SPEED</span>
+                    <strong>{Math.round(displaySpeed)}</strong><small>km/h</small>
+                    <div className="readout-meta"><span>GPS ACCURACY</span><b>{gpsAccuracy === null ? "—" : `±${Math.round(gpsAccuracy)}m`}</b></div>
+                  </div>
                 </section>
                 {activeZoneDisplay && (() => {
                   const { zone, evidence } = activeZoneDisplay;
