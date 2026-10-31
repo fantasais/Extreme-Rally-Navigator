@@ -32,6 +32,7 @@ import {
   reverseRoute,
 } from "./core/gpx";
 import { RouteMatcher } from "./core/matcher";
+import { MotionFilter, type MotionResult } from "./core/motion";
 import {
   appendRunFix,
   createRun,
@@ -63,8 +64,8 @@ import type {
   ZoneDefinition,
 } from "./core/types";
 
-const APP_VERSION = "1.0.5";
-const BUILD_ID = "2026.10.06.4";
+const APP_VERSION = "1.0.6";
+const BUILD_ID = "2026.10.30.1";
 const SELECTED_ROUTE_KEY = "xr-v1-selected-route";
 const END_HOLD_MS = 1_000;
 
@@ -228,6 +229,8 @@ export default function NavigatorApp() {
   const endHoldRef = useRef<number | null>(null);
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
   const matcherRef = useRef<RouteMatcher | null>(null);
+  const motionFilterRef = useRef(new MotionFilter());
+  const lastMatchRef = useRef<MatchResult>(emptyMatch);
   const sessionRef = useRef<ActiveSession | null>(null);
   const routeRef = useRef<RouteRecord | null>(null);
   const eventsRef = useRef<NavigationEvent[]>([]);
@@ -519,6 +522,7 @@ export default function NavigatorApp() {
     matchResult: MatchResult,
     nav: NavigationState,
     speedKph: number,
+    motion: MotionResult,
   ) => {
     const activeSession = sessionRef.current;
     const route = routeRef.current;
@@ -547,6 +551,12 @@ export default function NavigatorApp() {
       rawSpeedKph: fix.speedMps * 3.6,
       displaySpeedKph: speedKph,
       headingDeg: fix.heading,
+      motionState: motion.state,
+      fixDecision: motion.decision,
+      fixReason: motion.reason,
+      interFixGapMs: motion.interFixGapMs,
+      impliedSpeedKph: motion.impliedSpeedKph,
+      stationaryDurationMs: motion.stationaryDurationMs,
       matchStatus: matchResult.status,
       matchReason: matchResult.reason,
       routeDistanceM: matchResult.routeDistance,
@@ -617,17 +627,48 @@ export default function NavigatorApp() {
     const activeSession = sessionRef.current;
     const matcher = matcherRef.current;
     if (!activeSession || !matcher) return;
-    const matchResult = matcher.update(fix);
+    const motion = motionFilterRef.current.process(fix);
+    const processedFix = motion.fix;
+    const started = processedFix.timestamp >= activeSession.startTimestamp;
+
+    if (motion.decision === "REJECTED") {
+      const previousMatch = lastMatchRef.current;
+      const rejectedMatch: MatchResult = {
+        ...previousMatch,
+        status: "GPS_STALE",
+        reliable: false,
+        reason: motion.reason,
+      };
+      if (started) {
+        appendPersistentFix(
+          processedFix,
+          rejectedMatch,
+          { ...navigationRef.current, transitions: [] },
+          smoothedSpeedRef.current,
+          motion,
+        );
+      }
+      setMatch(rejectedMatch);
+      setGpsAccuracy(processedFix.accuracy);
+      setGpsStatus("ready");
+      return;
+    }
+
+    const matchResult = matcher.update(processedFix, {
+      holdProgress: motion.holdRouteProgress,
+    });
+    lastMatchRef.current = matchResult;
     const previous = previousRawFixRef.current;
-    const dt = previous ? clamp((fix.timestamp - previous.timestamp) / 1_000, 0.1, 5) : 1;
-    const displacement = previous ? haversine(previous, fix) : 0;
+    const dt = previous
+      ? clamp((processedFix.timestamp - previous.timestamp) / 1_000, 0.1, 5)
+      : 1;
     const boundedSpeedMps = previous
       ? clamp(
-          fix.speedMps,
+          processedFix.speedMps,
           Math.max(0, previous.speedMps - 15 * dt),
           previous.speedMps + 12 * dt,
         )
-      : fix.speedMps;
+      : processedFix.speedMps;
     const rawKph = boundedSpeedMps * 3.6;
     const alpha = clamp(1 - Math.exp(-dt / 0.55), 0.45, 0.92);
     smoothedSpeedRef.current = smoothedSpeedRef.current === 0
@@ -635,21 +676,31 @@ export default function NavigatorApp() {
       : smoothedSpeedRef.current + alpha * (rawKph - smoothedSpeedRef.current);
     if (rawKph < 1) smoothedSpeedRef.current = 0;
 
-    const started = fix.timestamp >= activeSession.startTimestamp;
     let nav = navigationRef.current;
     if (started && !stageStartedRef.current) nav = activateStageAtDistance(matchResult.routeDistance);
     if (
       started &&
-      previous &&
-      previous.timestamp >= activeSession.startTimestamp &&
-      fix.accuracy <= 30 &&
-      dt <= 3 &&
-      displacement > Math.max(2.5, fix.accuracy * 0.3) &&
-      displacement / dt < 70
+      processedFix.accuracy <= 30 &&
+      motion.distanceDeltaM > 0
     ) {
-      actualDistanceRef.current += displacement;
+      let stageFraction = 1;
+      if (
+        !motion.releasedFromStationary &&
+        motion.distanceFromTimestamp !== undefined &&
+        motion.distanceFromTimestamp < activeSession.startTimestamp
+      ) {
+        const span = processedFix.timestamp - motion.distanceFromTimestamp;
+        stageFraction = span > 0
+          ? clamp(
+              (processedFix.timestamp - activeSession.startTimestamp) / span,
+              0,
+              1,
+            )
+          : 0;
+      }
+      actualDistanceRef.current += motion.distanceDeltaM * stageFraction;
     }
-    if (started && fix.accuracy <= 30) {
+    if (started && processedFix.accuracy <= 30 && motion.decision === "ACCEPTED") {
       topSpeedRef.current = Math.max(topSpeedRef.current, smoothedSpeedRef.current);
     }
     if (started) {
@@ -658,23 +709,29 @@ export default function NavigatorApp() {
         eventsRef.current,
         instructionsRef.current,
         matchResult.routeDistance,
-        fix.timestamp,
+        processedFix.timestamp,
         matchResult.reliable,
       );
       navigationRef.current = nav;
       setNavigation(nav);
-      appendPersistentFix(fix, matchResult, nav, smoothedSpeedRef.current);
+      appendPersistentFix(
+        processedFix,
+        matchResult,
+        nav,
+        smoothedSpeedRef.current,
+        motion,
+      );
     }
 
-    previousRawFixRef.current = fix;
+    previousRawFixRef.current = processedFix;
     setMatch(matchResult);
     routeDistanceRef.current = matchResult.routeDistance;
     setRouteDistance(matchResult.routeDistance);
     setActualDistance(actualDistanceRef.current);
     setDisplaySpeed(smoothedSpeedRef.current);
-    setGpsAccuracy(fix.accuracy);
-    setLastGpsTimestamp(fix.timestamp);
-    setLastHeading(fix.heading);
+    setGpsAccuracy(processedFix.accuracy);
+    setLastGpsTimestamp(processedFix.timestamp);
+    setLastHeading(processedFix.heading);
     setGpsStatus("ready");
     setGpsError("");
   };
@@ -691,7 +748,6 @@ export default function NavigatorApp() {
         const previous = previousRawFixRef.current;
         const receivedAt = Date.now();
         const timestamp = position.timestamp || receivedAt;
-        if (previous && timestamp <= previous.timestamp) return;
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
         const dt = previous ? Math.max(0.1, (timestamp - previous.timestamp) / 1_000) : 1;
@@ -700,13 +756,11 @@ export default function NavigatorApp() {
           ? movement / dt
           : 0;
         const reported = position.coords.speed;
-        const speedMps = clamp(
+        const reportedSpeedMps =
           reported !== null && Number.isFinite(reported) && reported >= 0
             ? reported
-            : calculated,
-          0,
-          70,
-        );
+            : undefined;
+        const speedMps = reportedSpeedMps ?? calculated;
         const reportedHeading = position.coords.heading;
         const movementHeading = previous && movement > 4
           ? bearing(previous, { lat, lon })
@@ -721,6 +775,7 @@ export default function NavigatorApp() {
           lon,
           accuracy: position.coords.accuracy,
           speedMps,
+          reportedSpeedMps,
           heading,
         });
       },
@@ -827,6 +882,7 @@ export default function NavigatorApp() {
     const events = buildNavigationEvents(selectedRoute, stage, turns);
     const matcher = new RouteMatcher(selectedRoute.points, stage.startRouteKm * 1_000);
     matcherRef.current = matcher;
+    motionFilterRef.current.reset();
     routeRef.current = selectedRoute;
     eventsRef.current = events;
     instructionsRef.current = instructions;
@@ -840,6 +896,11 @@ export default function NavigatorApp() {
     navigationRef.current = initial;
     setNavigation(initial);
     previousRawFixRef.current = null;
+    lastMatchRef.current = {
+      ...emptyMatch,
+      routeDistance: stage.startRouteKm * 1_000,
+      nearestRouteDistance: stage.startRouteKm * 1_000,
+    };
     smoothedSpeedRef.current = 0;
     actualDistanceRef.current = 0;
     topSpeedRef.current = 0;
@@ -863,7 +924,7 @@ export default function NavigatorApp() {
     setRouteDistance(stage.startRouteKm * 1_000);
     setActualDistance(0);
     setDisplaySpeed(0);
-    setMatch({ ...emptyMatch, routeDistance: stage.startRouteKm * 1_000 });
+    setMatch(lastMatchRef.current);
     setStageStatus(active.status);
     setTab("rally");
     if (runId) {
@@ -946,6 +1007,9 @@ export default function NavigatorApp() {
     sessionRef.current = null;
     routeRef.current = null;
     matcherRef.current = null;
+    motionFilterRef.current.reset();
+    previousRawFixRef.current = null;
+    lastMatchRef.current = emptyMatch;
     runMetadataRef.current = null;
     setSession(null);
     setStageStatus("idle");
@@ -1058,7 +1122,9 @@ export default function NavigatorApp() {
     const columns: (keyof RunLogEntry)[] = [
       "runId", "sequence", "timestamp", "receivedAt", "latitude", "longitude",
       "accuracyM", "rawSpeedKph", "displaySpeedKph", "headingDeg", "matchStatus",
-      "matchReason", "routeDistanceM", "stageOdoM", "actualDistanceM", "offRouteM",
+      "motionState", "fixDecision", "fixReason", "interFixGapMs",
+      "impliedSpeedKph", "stationaryDurationMs", "matchReason",
+      "routeDistanceM", "stageOdoM", "actualDistanceM", "offRouteM",
       "segment", "nearestRouteDistanceM", "routeReliable", "routeAmbiguous",
       "upcomingTurnId", "upcomingTurnLabel", "upcomingTurnDistanceM",
       "upcomingTurnSource", "upcomingTurnConfidence", "nextInstructionId",
@@ -1476,4 +1542,3 @@ export default function NavigatorApp() {
     </main>
   );
 }
-

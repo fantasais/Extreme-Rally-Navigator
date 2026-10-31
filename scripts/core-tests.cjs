@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { RouteMatcher } = require("../.test-build/matcher.js");
+const { MotionFilter } = require("../.test-build/motion.js");
 const {
   advanceNavigation,
   initialiseNavigation,
@@ -24,6 +25,111 @@ function fix(distance, timestamp, lateral = 0, speedMps = 20) {
     speedMps,
     heading: 90,
   };
+}
+
+function motionFix(distance, timestamp, reportedSpeedMps, accuracy = 5, lateral = 0) {
+  const coordinate = point(distance, lateral);
+  return {
+    timestamp,
+    receivedAt: timestamp,
+    lat: coordinate.lat,
+    lon: coordinate.lon,
+    accuracy,
+    speedMps: reportedSpeedMps ?? 0,
+    reportedSpeedMps,
+    heading: 90,
+  };
+}
+
+{
+  const filter = new MotionFilter();
+  const matcher = new RouteMatcher(points, 1_000);
+  let timestamp = 1_000;
+  let result = filter.process(motionFix(1_000, timestamp, 0));
+  let matched = matcher.update(result.fix, { holdProgress: result.holdRouteProgress });
+  let acceptedDistance = result.distanceDeltaM;
+  const jitter = [2, -2, 1, -1, 3, -3, 2, -2];
+  for (let index = 0; index < 64; index += 1) {
+    timestamp += 1_000;
+    result = filter.process(motionFix(1_000 + jitter[index % jitter.length], timestamp, 0));
+    assert.notEqual(result.decision, "REJECTED");
+    acceptedDistance += result.distanceDeltaM;
+    matched = matcher.update(result.fix, { holdProgress: result.holdRouteProgress });
+  }
+  assert.equal(filter.getState(), "STATIONARY");
+  assert.equal(result.decision, "HELD");
+  assert.equal(acceptedDistance, 0);
+  assert.ok(matched.routeDistance <= 1_003.5);
+  timestamp += 30_000;
+  result = filter.process(motionFix(1_001, timestamp, 0));
+  assert.equal(result.decision, "HELD");
+  matched = matcher.update(result.fix, { holdProgress: result.holdRouteProgress });
+  assert.equal(matched.status, "MATCHED");
+  assert.equal(matched.reason, "STATIONARY_PROGRESS_HELD");
+  const heldDistance = matched.routeDistance;
+  timestamp += 1_000;
+  result = filter.process(motionFix(1_010, timestamp, 2));
+  assert.equal(result.decision, "ACCEPTED");
+  assert.equal(result.reason, "STATIONARY_RELEASE_BY_SPEED");
+  assert.ok(result.distanceDeltaM >= 9 && result.distanceDeltaM <= 11);
+  matched = matcher.update(result.fix, { holdProgress: result.holdRouteProgress });
+  assert.ok(matched.routeDistance >= heldDistance);
+}
+
+{
+  const filter = new MotionFilter();
+  let timestamp = 1_000;
+  filter.process(motionFix(1_000, timestamp, 0));
+  for (let index = 0; index < 4; index += 1) {
+    timestamp += 1_000;
+    filter.process(motionFix(1_000, timestamp, 0));
+  }
+  timestamp += 1_000;
+  const firstMovement = filter.process(motionFix(1_005, timestamp, undefined));
+  assert.equal(firstMovement.decision, "HELD");
+  timestamp += 1_000;
+  const secondMovement = filter.process(motionFix(1_011, timestamp, undefined));
+  assert.equal(secondMovement.decision, "ACCEPTED");
+  assert.equal(secondMovement.reason, "STATIONARY_RELEASE_BY_MOVEMENT");
+}
+
+{
+  const filter = new MotionFilter();
+  filter.process(motionFix(0, 1_000, 20));
+  const teleport = filter.process(motionFix(300, 2_000, 20));
+  assert.equal(teleport.decision, "REJECTED");
+  assert.equal(teleport.reason, "COORDINATE_TELEPORT_OVER_250_KPH");
+}
+
+{
+  const filter = new MotionFilter();
+  const speedMps = 220 / 3.6;
+  filter.process(motionFix(0, 1_000, speedMps));
+  const fastButCredible = filter.process(motionFix(speedMps, 2_000, speedMps));
+  assert.equal(fastButCredible.decision, "ACCEPTED");
+  const overLimit = new MotionFilter().process(motionFix(0, 1_000, 260 / 3.6));
+  assert.equal(overLimit.decision, "REJECTED");
+  assert.equal(overLimit.reason, "REPORTED_SPEED_OVER_250_KPH");
+}
+
+{
+  const filter = new MotionFilter();
+  filter.process(motionFix(0, 1_000, 20));
+  const afterGap = filter.process(motionFix(1_500, 31_000, 20));
+  assert.equal(afterGap.decision, "ACCEPTED");
+  assert.equal(afterGap.distanceDeltaM, 0);
+  assert.equal(afterGap.reason, "ACCEPTED_AFTER_GNSS_GAP_NO_DISTANCE");
+}
+
+{
+  const filter = new MotionFilter();
+  filter.process(motionFix(0, 1_000, 0));
+  const inaccurate = filter.process(motionFix(1, 2_000, 0, 60));
+  assert.equal(inaccurate.decision, "REJECTED");
+  assert.equal(inaccurate.reason, "ACCURACY_OVER_50M");
+  const duplicate = filter.process(motionFix(1, 1_000, 0));
+  assert.equal(duplicate.decision, "REJECTED");
+  assert.equal(duplicate.reason, "DUPLICATE_OR_OUT_OF_ORDER_TIMESTAMP");
 }
 
 {

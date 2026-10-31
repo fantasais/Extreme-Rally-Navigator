@@ -97,8 +97,17 @@ export type RawFix = {
   lon: number;
   accuracy: number;
   speedMps: number;
+  reportedSpeedMps?: number;
   heading?: number;
 };
+
+export type MotionState =
+  | "ACQUIRING"
+  | "MOVING"
+  | "STATIONARY_CANDIDATE"
+  | "STATIONARY";
+
+export type FixDecision = "ACCEPTED" | "HELD" | "REJECTED";
 
 export type MatchStatus =
   | "ACQUIRING"
@@ -198,6 +207,12 @@ export type RunLogEntry = {
   rawSpeedKph: number;
   displaySpeedKph: number;
   headingDeg?: number;
+  motionState: MotionState;
+  fixDecision: FixDecision;
+  fixReason: string;
+  interFixGapMs?: number;
+  impliedSpeedKph?: number;
+  stationaryDurationMs: number;
   matchStatus: MatchStatus;
   matchReason: string;
   routeDistanceM: number;

@@ -307,4 +307,3 @@ export function importRoadbookCsv(
 export function routePointForInstruction(route: RouteRecord, instruction: Instruction) {
   return pointAtDistance(route.points, instruction.routeDistance);
 }
-

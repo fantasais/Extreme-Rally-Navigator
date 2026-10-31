@@ -104,7 +104,7 @@ export class RouteMatcher {
     return { ...this.snapshot };
   }
 
-  update(fix: RawFix): MatchResult {
+  update(fix: RawFix, options: { holdProgress?: boolean } = {}): MatchResult {
     const total = this.points.at(-1)?.distance || 0;
     const age = fix.receivedAt - fix.timestamp;
     const previousFix = this.snapshot.lastFix;
@@ -139,9 +139,9 @@ export class RouteMatcher {
       fix.accuracy > 50 ||
       age > 3_000 ||
       age < -1_000 ||
-      (previousFix && dt > 5)
+      (previousFix && dt > 5 && !options.holdProgress)
     ) {
-      if (previousFix && dt > 5) {
+      if (previousFix && dt > 5 && !options.holdProgress) {
         this.gnssOutage = true;
         this.outageStartedAt ??= previousFix.timestamp;
       }
@@ -187,6 +187,30 @@ export class RouteMatcher {
         false,
         recoveryBearing,
         "INITIAL_FIX",
+      );
+    }
+
+    if (options.holdProgress) {
+      const status = this.snapshot.status === "GPS_STALE"
+        ? "ACQUIRING"
+        : this.snapshot.status;
+      this.snapshot = {
+        ...this.snapshot,
+        status,
+        lastFix: fix,
+        departureCount: status === "MATCHED" ? 0 : this.snapshot.departureCount,
+      };
+      if (status === "MATCHED") {
+        this.lastReliableTimestamp = fix.timestamp;
+        this.gnssOutage = false;
+        this.outageStartedAt = undefined;
+      }
+      return this.result(
+        globalNearest,
+        status === "MATCHED",
+        false,
+        recoveryBearing,
+        "STATIONARY_PROGRESS_HELD",
       );
     }
 

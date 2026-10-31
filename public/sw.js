@@ -1,4 +1,4 @@
-const CACHE = "xr-navigator-v1-20261006-4";
+const CACHE = "xr-navigator-v1-20261030-1";
 const SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -83,4 +83,3 @@ self.addEventListener("fetch", (event) => {
       }),
   );
 });
-

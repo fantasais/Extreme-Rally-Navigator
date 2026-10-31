@@ -1,6 +1,15 @@
-# Extreme Rally Navigator v1.0
+# Extreme Rally Navigator v1.0.6
 
 Clean replacement build created from the Rally of Himalayas field findings. This is a standalone Next.js PWA; it does not depend on any file from v0.11.
+
+## v1.0.6 GPS hardening
+
+- Separates every observed GNSS fix from movement accepted for route and distance calculations.
+- Locks route progress and actual distance after a confirmed stationary period, while continuing to receive fresh GPS timestamps.
+- Releases the stationary lock immediately on credible device speed or after coherent movement confirmation when device speed is unavailable.
+- Rejects duplicate, stale, inaccurate and physically impossible fixes before they can corrupt navigation or stage statistics.
+- Uses a rally-safe 250 km/h plausibility ceiling without interfering with long GNSS outages or the existing tunnel-rejoin system.
+- Records motion state, fix decision, rejection reason, inter-fix gap, implied speed and stationary duration in exported run logs.
 
 ## What is fixed
 
@@ -47,7 +56,7 @@ Optional columns: `label`, `note`, `kind`, `heading`. Valid kinds are `START`, `
 5. Commit once and let Vercel deploy.
 6. Confirm the Vercel build ends with `Compiled successfully` and `Finished TypeScript`.
 7. Open the deployed URL online once, close every older installed PWA/tab, then reopen it. This lets the new service worker cache the v1 shell.
-8. The header must show `V1.0.0` before testing. Exported logs also record build `2026.10.05.1`.
+8. The header must show `V1.0.6` before testing. Exported logs also record build `2026.10.30.1`.
 
 Do not mix v0.11 files with this source tree. There is only one `navigator-app.tsx`, under `app/`.
 
