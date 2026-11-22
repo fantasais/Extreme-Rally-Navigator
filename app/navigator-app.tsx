@@ -9,6 +9,7 @@ import {
   type ChangeEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import RecceRecorder from "./recce-recorder";
 import {
   advanceNavigation,
   buildNavigationEvents,
@@ -64,8 +65,8 @@ import type {
   ZoneDefinition,
 } from "./core/types";
 
-const APP_VERSION = "1.0.6";
-const BUILD_ID = "2026.10.30.1";
+const APP_VERSION = "1.1.0";
+const BUILD_ID = "2026.11.21.1";
 const SELECTED_ROUTE_KEY = "xr-v1-selected-route";
 const END_HOLD_MS = 1_000;
 
@@ -170,17 +171,24 @@ function RoutePreview({ route, stage }: { route: RouteRecord; stage: StageProfil
     18 + ((point.lon - minLon) / (maxLon - minLon || 1)) * 564,
     258 - ((point.lat - minLat) / (maxLat - minLat || 1)) * 232,
   ];
-  const path = points
-    .map((point, index) => `${index ? "L" : "M"}${xy(point).join(",")}`)
-    .join(" ");
+  const paths: string[] = [];
+  let currentPath = "";
+  points.forEach((point, index) => {
+    const beginsSegment =
+      index === 0 ||
+      (points[index - 1].segment ?? 0) !== (point.segment ?? 0);
+    if (beginsSegment && currentPath) paths.push(currentPath);
+    currentPath = `${beginsSegment ? "M" : `${currentPath} L`}${xy(point).join(",")}`;
+  });
+  if (currentPath) paths.push(currentPath);
   const start = xy(pointAtDistance(points, stage.startRouteKm * 1_000));
   const finish = stage.finishRouteKm !== undefined
     ? xy(pointAtDistance(points, stage.finishRouteKm * 1_000))
     : undefined;
   return (
     <svg className="route-map" viewBox="0 0 600 276" aria-label="Route preview">
-      <path className="route-map-shadow" d={path} />
-      <path className="route-map-line" d={path} />
+      {paths.map((path, index) => <path key={`shadow-${index}`} className="route-map-shadow" d={path} />)}
+      {paths.map((path, index) => <path key={`line-${index}`} className="route-map-line" d={path} />)}
       <circle className="route-map-start" cx={start[0]} cy={start[1]} r="7" />
       {finish && <circle className="route-map-finish" cx={finish[0]} cy={finish[1]} r="7" />}
     </svg>
@@ -222,6 +230,7 @@ export default function NavigatorApp() {
   const [zoneAnnouncement, setZoneAnnouncement] = useState<"DZ" | "FZ" | null>(null);
   const [runs, setRuns] = useState<RunMetadata[]>([]);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [recceOpen, setRecceOpen] = useState(false);
 
   const gpxInputRef = useRef<HTMLInputElement>(null);
   const watchRef = useRef<number | null>(null);
@@ -279,6 +288,10 @@ export default function NavigatorApp() {
   );
 
   const refreshRuns = useCallback(async () => setRuns(await listRuns()), []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [recceOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -436,24 +449,29 @@ export default function NavigatorApp() {
     commitConfig(next);
   };
 
+  const importGpxText = async (text: string, fileName: string) => {
+    const route = await parseGpx(text, fileName);
+    const existing = routes.find((candidate) => candidate.contentHash === route.contentHash);
+    if (existing) {
+      setSelectedRouteId(existing.id);
+      setNotice(`${existing.name} was already loaded`);
+      return { id: existing.id, name: existing.name };
+    }
+    const config = defaultConfig(route);
+    await saveRouteAndConfig(route, config);
+    setRoutes((current) => [...current, route]);
+    setConfigs((current) => ({ ...current, [route.id]: config }));
+    setSelectedRouteId(route.id);
+    setNotice(`${route.name} loaded`);
+    return { id: route.id, name: route.name };
+  };
+
   const loadGpx = async (files: FileList | null) => {
     if (!files?.length || setupLocked) return;
     setSetupError("");
     for (const file of [...files]) {
       try {
-        const route = await parseGpx(await file.text(), file.name);
-        const existing = routes.find((candidate) => candidate.contentHash === route.contentHash);
-        if (existing) {
-          setSelectedRouteId(existing.id);
-          setNotice(`${existing.name} was already loaded`);
-          continue;
-        }
-        const config = defaultConfig(route);
-        await saveRouteAndConfig(route, config);
-        setRoutes((current) => [...current, route]);
-        setConfigs((current) => ({ ...current, [route.id]: config }));
-        setSelectedRouteId(route.id);
-        setNotice(`${route.name} loaded`);
+        await importGpxText(await file.text(), file.name);
       } catch (error) {
         setSetupError(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -1244,6 +1262,17 @@ export default function NavigatorApp() {
     return <main className="boot-screen"><strong>EXTREME RALLY</strong><span>Loading navigator…</span></main>;
   }
 
+  if (recceOpen) {
+    return (
+      <RecceRecorder
+        appVersion={APP_VERSION}
+        buildId={BUILD_ID}
+        onClose={() => setRecceOpen(false)}
+        onImportGpx={importGpxText}
+      />
+    );
+  }
+
   return (
     <main className={`app-shell ${stageStatus === "running" && tab === "rally" ? "stage-active" : ""}`}>
       <header className="topbar">
@@ -1290,12 +1319,13 @@ export default function NavigatorApp() {
               <div className="panel-heading">
                 <div><span>ROUTE</span><h2>GPX package</h2></div>
                 <div className="panel-actions">
+                  <button className="recce-launch-button" disabled={setupLocked} onClick={() => setRecceOpen(true)}>RECORD RECCE</button>
                   <button disabled={!selectedRoute || setupLocked} onClick={removeSelectedRoute}>REMOVE</button>
                   <button disabled={setupLocked} onClick={() => gpxInputRef.current?.click()}>+ GPX</button>
                 </div>
               </div>
               {!selectedRoute ? (
-                <div className="empty-state"><strong>No route loaded</strong><p>Upload an organiser GPX to begin.</p></div>
+                <div className="empty-state"><strong>No route loaded</strong><p>Upload an organiser GPX or record the route during recce.</p><button className="recce-empty-action" disabled={setupLocked} onClick={() => setRecceOpen(true)}>OPEN RECCE RECORDER</button></div>
               ) : (
                 <>
                   <label className="field">CHOSEN ROUTE

@@ -1602,6 +1602,675 @@ button:disabled {
   }
 }
 
+.recce-launch-button,
+.recce-empty-action {
+  border-color: rgba(44, 201, 243, .55);
+  color: var(--cyan);
+}
+
+.empty-state .recce-empty-action {
+  margin-top: 10px;
+  padding-inline: 16px;
+}
+
+.recce-shell {
+  width: min(100%, 700px);
+  min-height: 100dvh;
+  margin: 0 auto;
+  background:
+    radial-gradient(circle at 100% 0, rgba(44, 201, 243, .08), transparent 24rem),
+    var(--bg);
+}
+
+.recce-topbar {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  display: flex;
+  min-height: 70px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(7, 8, 9, .97);
+}
+
+.recce-topbar span,
+.recce-section-title span,
+.recce-intro-card > span,
+.recce-live-metrics span,
+.recce-fix-strip,
+.recce-last-marker span,
+.recce-review-metrics span,
+.recce-name-field,
+.recce-marker-fields label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.recce-topbar span {
+  color: var(--cyan);
+}
+
+.recce-topbar h1 {
+  margin: 2px 0 0;
+  font-size: clamp(19px, 5.5vw, 25px);
+  line-height: 1;
+  letter-spacing: -.03em;
+}
+
+.recce-topbar button {
+  padding-inline: 14px;
+}
+
+.recce-content {
+  padding: 12px 12px calc(18px + var(--safe-bottom));
+}
+
+.recce-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.recce-intro-card,
+.recce-history-card,
+.recce-status-card,
+.recce-marker-card,
+.recce-review-card,
+.recce-markers-review,
+.recce-review-actions {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(145deg, #12161a, #0d0f11);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .2);
+}
+
+.recce-intro-card {
+  border-color: rgba(44, 201, 243, .38);
+}
+
+.recce-intro-card h2,
+.recce-section-title h2,
+.recce-status-card h2 {
+  margin: 3px 0 0;
+  font-size: clamp(20px, 5.5vw, 27px);
+  line-height: 1.06;
+}
+
+.recce-intro-card p {
+  margin: 12px 0 16px;
+  color: #c4c9cf;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.recce-intro-card label,
+.recce-name-field {
+  display: grid;
+  gap: 7px;
+}
+
+.recce-intro-card input,
+.recce-name-field input,
+.recce-marker-fields input,
+.recce-marker-fields select {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  outline: 0;
+  background: #080a0c;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.recce-intro-card input:focus,
+.recce-name-field input:focus,
+.recce-marker-fields input:focus,
+.recce-marker-fields select:focus {
+  border-color: var(--cyan);
+}
+
+.recce-primary {
+  border-color: rgba(145, 243, 49, .55);
+  background: var(--lime);
+  color: #071000;
+}
+
+.recce-intro-card .recce-primary {
+  width: 100%;
+  min-height: 56px;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.recce-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.recce-section-title > b {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+.recce-section-title > b.ready {
+  border-color: rgba(145, 243, 49, .55);
+  color: var(--lime);
+}
+
+.recce-section-title > b.check {
+  border-color: rgba(255, 176, 32, .55);
+  color: var(--amber);
+}
+
+.recce-empty,
+.recce-preview-empty {
+  padding: 22px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.recce-session-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.recce-session-row:first-of-type {
+  border-top: 0;
+}
+
+.recce-session-row > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.recce-session-row strong {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recce-session-row span,
+.recce-session-row b {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.recce-session-row > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.recce-session-row button {
+  min-height: 36px;
+  padding-inline: 9px;
+  font-size: 9px;
+}
+
+.recce-session-row .recce-resume {
+  border-color: rgba(145, 243, 49, .45);
+  color: var(--lime);
+}
+
+.recce-danger {
+  border-color: rgba(255, 87, 80, .45);
+  color: var(--red);
+}
+
+.recce-live .recce-content {
+  position: relative;
+  height: calc(100dvh - 70px);
+  padding: 8px 9px calc(8px + var(--safe-bottom));
+  overflow: hidden;
+}
+
+.recce-live .notice-banner,
+.recce-live .error-banner {
+  position: absolute;
+  z-index: 20;
+  top: 8px;
+  right: 9px;
+  left: 9px;
+  margin: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+
+.recce-live .notice-banner {
+  background: #10200e;
+}
+
+.recce-live .error-banner {
+  background: #2a1011;
+}
+
+.recce-record-screen {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recce-status-card,
+.recce-marker-card {
+  padding: 13px;
+}
+
+.recce-status-card {
+  flex: 0 0 auto;
+  border-color: rgba(145, 243, 49, .35);
+}
+
+.recce-status-card.warning {
+  border-color: rgba(255, 176, 32, .65);
+}
+
+.recce-live-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.recce-live-label i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 5px rgba(255, 87, 80, .12);
+}
+
+.recce-live-label b {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.recce-status-card h2 {
+  margin-top: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recce-live-metrics {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr 1fr;
+  gap: 1px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--line);
+}
+
+.recce-live-metrics > div {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  min-height: 74px;
+  padding: 9px;
+  background: #0b0d0f;
+}
+
+.recce-live-metrics strong {
+  color: var(--lime);
+  font-size: clamp(23px, 7.3vw, 34px);
+  line-height: 1;
+  letter-spacing: -.05em;
+}
+
+.recce-live-metrics small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.recce-fix-strip {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 9px;
+  font-size: 8px;
+}
+
+.recce-marker-card {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.recce-marker-card .recce-section-title {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+}
+
+.recce-quick-markers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.recce-quick-markers button {
+  display: grid;
+  min-height: clamp(82px, 16vh, 116px);
+  place-content: center;
+  gap: 5px;
+  border-color: rgba(145, 243, 49, .34);
+  color: var(--lime);
+  font-size: clamp(34px, 11vw, 54px);
+  line-height: .8;
+}
+
+.recce-quick-markers button:nth-child(3) {
+  border-color: rgba(255, 176, 32, .5);
+  color: var(--amber);
+}
+
+.recce-quick-markers button:nth-child(4) {
+  border-color: rgba(44, 201, 243, .45);
+  color: var(--cyan);
+}
+
+.recce-quick-markers span {
+  color: var(--text);
+  font-size: 9px;
+  letter-spacing: .12em;
+}
+
+.recce-more-markers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.recce-more-markers button {
+  min-height: 43px;
+  padding: 5px;
+  font-size: 9px;
+}
+
+.recce-last-marker {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.recce-last-marker strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recce-record-actions {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: .85fr 1.15fr;
+  gap: 8px;
+}
+
+.recce-record-actions button {
+  min-height: 54px;
+}
+
+.recce-record-actions button:last-child {
+  border-color: rgba(255, 87, 80, .55);
+  background: #241012;
+  color: #ff9995;
+}
+
+.recce-record-actions button:last-child.holding {
+  background: var(--red);
+  color: white;
+}
+
+.recce-route-map {
+  display: block;
+  width: 100%;
+  height: 230px;
+  margin: 8px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background:
+    linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px),
+    #080a0c;
+  background-size: 28px 28px;
+}
+
+.recce-route-map path {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 5;
+}
+
+.recce-review-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.recce-review-metrics > div {
+  display: grid;
+  gap: 4px;
+  padding: 11px 8px;
+  border-left: 1px solid var(--line);
+}
+
+.recce-review-metrics > div:first-child {
+  border-left: 0;
+}
+
+.recce-review-metrics strong {
+  font-size: 14px;
+}
+
+.recce-gap-warning {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 11px;
+  border-left: 4px solid var(--amber);
+  background: rgba(255, 176, 32, .08);
+}
+
+.recce-gap-warning strong {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+.recce-gap-warning span {
+  color: #c8cbd0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.recce-name-field {
+  margin-top: 13px;
+}
+
+.recce-marker-editor {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.recce-marker-editor:first-of-type {
+  border-top: 0;
+}
+
+.recce-marker-editor-title {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.recce-marker-editor-title strong {
+  color: var(--lime);
+  font-size: 20px;
+}
+
+.recce-marker-editor-title span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.recce-marker-editor-title button {
+  min-height: 34px;
+  border-color: rgba(255, 87, 80, .45);
+  color: var(--red);
+  font-size: 9px;
+}
+
+.recce-marker-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.recce-marker-fields label {
+  display: grid;
+  gap: 5px;
+}
+
+.recce-marker-fields label.wide {
+  grid-column: 1 / -1;
+}
+
+.recce-marker-fields input,
+.recce-marker-fields select {
+  min-height: 44px;
+  font-size: 12px;
+}
+
+.recce-review-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.recce-review-actions button {
+  min-height: 52px;
+}
+
+@media (max-width: 520px) {
+  .panel-actions {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel-actions .recce-launch-button {
+    grid-column: 1 / -1;
+  }
+
+  .recce-session-row {
+    grid-template-columns: 1fr;
+  }
+
+  .recce-session-row > div:last-child {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .recce-review-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .recce-review-metrics > div:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .recce-review-metrics > div:nth-child(4) {
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-height: 700px) {
+  .recce-live .recce-topbar {
+    min-height: 58px;
+    padding-block: 7px;
+  }
+
+  .recce-live .recce-content {
+    height: calc(100dvh - 58px);
+  }
+
+  .recce-live .recce-status-card,
+  .recce-live .recce-marker-card {
+    padding: 10px;
+  }
+
+  .recce-live .recce-status-card h2 {
+    margin-top: 6px;
+    font-size: 18px;
+  }
+
+  .recce-live .recce-live-metrics {
+    margin-top: 8px;
+  }
+
+  .recce-live .recce-live-metrics > div {
+    min-height: 62px;
+    padding: 7px;
+  }
+
+  .recce-live .recce-fix-strip {
+    margin-top: 6px;
+  }
+
+  .recce-live .recce-marker-card .recce-section-title {
+    margin-bottom: 7px;
+  }
+
+  .recce-live .recce-quick-markers button {
+    min-height: 72px;
+  }
+
+  .recce-live .recce-record-actions button {
+    min-height: 46px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

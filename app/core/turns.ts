@@ -1,5 +1,6 @@
 import {
   bearing,
+  connectedSegment,
   pointAtDistance,
   signedAngle,
   sourceGapAtDistance,
@@ -15,6 +16,13 @@ function severity(angle: number): TurnCall["severity"] {
         ? "MEDIUM"
         : "GENTLE";
 }
+
+const severityAngle: Record<TurnCall["severity"], number> = {
+  GENTLE: 24,
+  MEDIUM: 50,
+  SHARP: 85,
+  HAIRPIN: 125,
+};
 
 export function turnLeadDistance(turn: TurnCall, speedKph = 0) {
   const severityLead =
@@ -68,6 +76,7 @@ export function buildTurnCalls(route: RouteRecord): TurnCall[] {
   }
 
   for (let index = 1; index < points.length - 1; index += 1) {
+    if (!connectedSegment(points, index - 1) || !connectedSegment(points, index)) continue;
     const before = points[index - 1];
     const centre = points[index];
     const after = points[index + 1];
@@ -139,6 +148,21 @@ export function buildTurnCalls(route: RouteRecord): TurnCall[] {
     .filter((call) => call.angle >= threshold);
 
   for (const instruction of route.instructions) {
+    if (instruction.direction && instruction.severity) {
+      const angle = severityAngle[instruction.severity];
+      calls.push({
+        distance: instruction.routeDistance,
+        passDistance: instruction.routeDistance,
+        direction: instruction.direction,
+        severity: instruction.severity,
+        angle,
+        source: "PACENOTE",
+        confidence: "HIGH",
+        startDistance: instruction.routeDistance,
+        endDistance: instruction.routeDistance,
+      });
+      continue;
+    }
     if (instruction.routeDistance < 45 || instruction.routeDistance > total - 45) continue;
     const before = pointAtDistance(points, instruction.routeDistance - 45);
     const centre = pointAtDistance(points, instruction.routeDistance);
@@ -150,6 +174,7 @@ export function buildTurnCalls(route: RouteRecord): TurnCall[] {
       sourceGapAtDistance(points, instruction.routeDistance - 20),
       sourceGapAtDistance(points, instruction.routeDistance + 20),
     );
+    if (!Number.isFinite(largestGap)) continue;
     calls.push({
       distance: instruction.routeDistance,
       passDistance: instruction.routeDistance,
@@ -178,10 +203,13 @@ export function buildTurnCalls(route: RouteRecord): TurnCall[] {
         previous.angle = candidate.angle;
         previous.severity = candidate.severity;
       }
-      if (candidate.source === "WAYPOINT") {
+      if (
+        candidate.source === "PACENOTE" ||
+        (candidate.source === "WAYPOINT" && previous.source !== "PACENOTE")
+      ) {
         previous.distance = candidate.distance;
         previous.passDistance = candidate.passDistance;
-        previous.source = "WAYPOINT";
+        previous.source = candidate.source;
         previous.confidence = candidate.confidence;
       }
       continue;

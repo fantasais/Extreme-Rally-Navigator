@@ -38,9 +38,23 @@ function instructionKind(label: string, note: string): InstructionKind {
   return "ROADBOOK";
 }
 
+function instructionDirection(label: string, note: string) {
+  const match = `${label} ${note}`.toUpperCase().match(/\b(LEFT|RIGHT)\b/);
+  return match?.[1] as Instruction["direction"] | undefined;
+}
+
+function instructionSeverity(label: string, note: string) {
+  const match = `${label} ${note}`.toUpperCase().match(/\b(GENTLE|MEDIUM|SHARP|HAIRPIN)\b/);
+  return match?.[1] as Instruction["severity"] | undefined;
+}
+
 function calculateQuality(points: RouteRecord["points"], instructionCount: number) {
   const gaps = points.slice(1).map((point, index) => point.distance - points[index].distance);
-  const large = gaps.filter((gap) => gap > 140);
+  const large = gaps.filter(
+    (gap, index) =>
+      gap > 140 ||
+      (points[index].segment ?? 0) !== (points[index + 1].segment ?? 0),
+  );
   return {
     pointCount: points.length,
     instructionCount,
@@ -59,33 +73,45 @@ export async function parseGpx(text: string, fileName: string): Promise<RouteRec
 
   const trackPoints = [...xml.getElementsByTagNameNS("*", "trkpt")];
   const routePoints = [...xml.getElementsByTagNameNS("*", "rtept")];
-  const nodes = trackPoints.length ? trackPoints : routePoints;
-  if (nodes.length < 2) throw new Error("The GPX has no usable track");
+  const trackSegments = [...xml.getElementsByTagNameNS("*", "trkseg")]
+    .map((segment) => [...segment.getElementsByTagNameNS("*", "trkpt")])
+    .filter((segment) => segment.length);
+  const groups = trackPoints.length
+    ? trackSegments.length
+      ? trackSegments
+      : [trackPoints]
+    : [routePoints];
+  if (groups.reduce((total, group) => total + group.length, 0) < 2) {
+    throw new Error("The GPX has no usable track");
+  }
 
   let cumulative = 0;
   const points: RouteRecord["points"] = [];
-  for (const node of nodes) {
-    const lat = Number(node.getAttribute("lat"));
-    const lon = Number(node.getAttribute("lon"));
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    const eleText = node.getElementsByTagNameNS("*", "ele")[0]?.textContent;
-    const point = {
-      lat,
-      lon,
-      ele: eleText && Number.isFinite(Number(eleText)) ? Number(eleText) : undefined,
-      distance: 0,
-    };
-    const previous = points.at(-1);
-    if (previous) cumulative += haversine(previous, point);
-    point.distance = cumulative;
-    points.push(point);
-  }
+  groups.forEach((group, segment) => {
+    for (const node of group) {
+      const lat = Number(node.getAttribute("lat"));
+      const lon = Number(node.getAttribute("lon"));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      const eleText = node.getElementsByTagNameNS("*", "ele")[0]?.textContent;
+      const point = {
+        lat,
+        lon,
+        ele: eleText && Number.isFinite(Number(eleText)) ? Number(eleText) : undefined,
+        distance: 0,
+        segment,
+      };
+      const previous = points.at(-1);
+      if (previous) cumulative += haversine(previous, point);
+      point.distance = cumulative;
+      points.push(point);
+    }
+  });
   if (points.length < 2) throw new Error("The GPX track contains invalid coordinates");
 
   const instructions: Instruction[] = [
     ...xml.getElementsByTagNameNS("*", "wpt"),
   ]
-    .map((waypoint, index) => {
+    .map((waypoint, index): Instruction | null => {
       const lat = Number(waypoint.getAttribute("lat"));
       const lon = Number(waypoint.getAttribute("lon"));
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
@@ -103,6 +129,8 @@ export async function parseGpx(text: string, fileName: string): Promise<RouteRec
         note,
         routeDistance: projection.routeDistance,
         kind: instructionKind(label, note),
+        direction: instructionDirection(label, note),
+        severity: instructionSeverity(label, note),
       } satisfies Instruction;
     })
     .filter((instruction): instruction is Instruction => Boolean(instruction))

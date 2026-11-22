@@ -1,6 +1,21 @@
-# Extreme Rally Navigator v1.0.6
+# Extreme Rally Navigator v1.1.0
 
-Clean replacement build created from the Rally of Himalayas field findings. This is a standalone Next.js PWA; it does not depend on any file from v0.11.
+Preview branch based directly on the proven v1.0.6 GPS production build. The rally navigation engine remains intact and an offline Recce Recorder is added as a separate workflow.
+
+## v1.1.0 Recce Recorder
+
+- Records a new route without requiring an organiser GPX.
+- Reuses the v1.0.6 stationary-drift and impossible-teleport filters.
+- Stores every observed fix and its accept/hold/reject reason in IndexedDB.
+- Survives accidental closure: an interrupted recording returns as a paused recce.
+- Creates a new GPX track segment after pauses or GNSS outages instead of silently drawing a continuous track.
+- Adds one-tap left, right, caution, SS start/finish, crest, junction, DZ, FZ and note markers.
+- Allows marker type, turn direction, severity, label and note correction during review.
+- Explicit recce turn markers become high-confidence pacenote calls in Rally mode.
+- Shows route distance, accepted points, GNSS segment count, GPS quality and gap warnings before save.
+- Saves the result directly into Navigator and also exports a standards-compatible GPX 1.1 file.
+- Runs fully offline after the PWA shell has been cached.
+- Keeps Recce controls out of the live Rally cockpit.
 
 ## v1.0.6 GPS hardening
 
@@ -56,7 +71,7 @@ Optional columns: `label`, `note`, `kind`, `heading`. Valid kinds are `START`, `
 5. Commit once and let Vercel deploy.
 6. Confirm the Vercel build ends with `Compiled successfully` and `Finished TypeScript`.
 7. Open the deployed URL online once, close every older installed PWA/tab, then reopen it. This lets the new service worker cache the v1 shell.
-8. The header must show `V1.0.6` before testing. Exported logs also record build `2026.10.30.1`.
+8. The header must show `V1.1.0` before testing. Exported logs also record build `2026.11.21.1`.
 
 Do not mix v0.11 files with this source tree. There is only one `navigator-app.tsx`, under `app/`.
 

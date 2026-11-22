@@ -3,6 +3,7 @@ export type Point = {
   lon: number;
   ele?: number;
   distance: number;
+  segment?: number;
 };
 
 export type InstructionKind =
@@ -21,6 +22,8 @@ export type Instruction = {
   routeDistance: number;
   kind: InstructionKind;
   heading?: number;
+  direction?: "LEFT" | "RIGHT";
+  severity?: TurnCall["severity"];
 };
 
 export type RouteQuality = {
@@ -86,7 +89,7 @@ export type TurnCall = {
   direction: "LEFT" | "RIGHT";
   severity: "GENTLE" | "MEDIUM" | "SHARP" | "HAIRPIN";
   angle: number;
-  source: "TRACK" | "WAYPOINT" | "SPARSE_VERTEX";
+  source: "TRACK" | "WAYPOINT" | "SPARSE_VERTEX" | "PACENOTE";
   confidence: "HIGH" | "MEDIUM" | "LOW";
 };
 
@@ -241,4 +244,71 @@ export type RunLogEntry = {
 };
 
 export type StoredRunFix = RunLogEntry & { id?: number };
+
+export type RecceStatus = "RECORDING" | "PAUSED" | "FINISHED";
+
+export type RecceMarkerKind =
+  | "START"
+  | "TURN"
+  | "CAUTION"
+  | "CREST"
+  | "JUNCTION"
+  | "DZ"
+  | "FZ"
+  | "FINISH"
+  | "NOTE";
+
+export type RecceMarker = {
+  id: string;
+  number: string;
+  kind: RecceMarkerKind;
+  label: string;
+  note: string;
+  timestamp: number;
+  lat: number;
+  lon: number;
+  accuracyM: number;
+  distanceM: number;
+  direction?: "LEFT" | "RIGHT";
+  severity?: TurnCall["severity"];
+};
+
+export type RecceSession = {
+  id: string;
+  name: string;
+  appVersion: string;
+  buildId: string;
+  status: RecceStatus;
+  startedAt: number;
+  updatedAt: number;
+  finishedAt?: number;
+  acceptedDistanceM: number;
+  observedFixCount: number;
+  acceptedFixCount: number;
+  segmentCount: number;
+  markers: RecceMarker[];
+  savedRouteId?: string;
+};
+
+export type RecceFix = {
+  sessionId: string;
+  sequence: number;
+  segment: number;
+  timestamp: number;
+  receivedAt: number;
+  latitude: number;
+  longitude: number;
+  altitudeM?: number;
+  accuracyM: number;
+  speedKph: number;
+  headingDeg?: number;
+  motionState: MotionState;
+  fixDecision: FixDecision;
+  fixReason: string;
+  interFixGapMs?: number;
+  impliedSpeedKph?: number;
+  distanceDeltaM: number;
+};
+
+export type StoredRecceFix = RecceFix & { id?: number };
 

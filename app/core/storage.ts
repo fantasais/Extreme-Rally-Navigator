@@ -1,5 +1,7 @@
 import { defaultConfig, sha256 } from "./gpx";
 import type {
+  RecceFix,
+  RecceSession,
   RouteConfig,
   RouteRecord,
   RunLogEntry,
@@ -7,7 +9,7 @@ import type {
 } from "./types";
 
 const DATABASE = "xr-navigator-v1";
-const VERSION = 1;
+const VERSION = 2;
 const LEGACY_KEY = "xr-navigator-v0.5-routes";
 const MIGRATION_KEY = "xr-v1-legacy-migration-complete";
 let databasePromise: Promise<IDBDatabase> | undefined;
@@ -50,6 +52,18 @@ export function openDatabase() {
           autoIncrement: true,
         });
         fixes.createIndex("runId", "runId");
+      }
+      if (!database.objectStoreNames.contains("recces")) {
+        const recces = database.createObjectStore("recces", { keyPath: "id" });
+        recces.createIndex("startedAt", "startedAt");
+        recces.createIndex("status", "status");
+      }
+      if (!database.objectStoreNames.contains("recceFixes")) {
+        const recceFixes = database.createObjectStore("recceFixes", {
+          keyPath: "id",
+          autoIncrement: true,
+        });
+        recceFixes.createIndex("sessionId", "sessionId");
       }
     };
     request.onsuccess = () => {
@@ -174,6 +188,68 @@ export async function markInterruptedRunsRecovered() {
     });
   }
   return unfinished.length;
+}
+
+export async function saveRecceSession(session: RecceSession) {
+  const database = await openDatabase();
+  const transaction = database.transaction("recces", "readwrite");
+  transaction.objectStore("recces").put(session);
+  await transactionDone(transaction);
+}
+
+export async function appendRecceFix(entry: RecceFix) {
+  const database = await openDatabase();
+  const transaction = database.transaction("recceFixes", "readwrite");
+  transaction.objectStore("recceFixes").add(entry);
+  await transactionDone(transaction);
+}
+
+export async function listRecces() {
+  const database = await openDatabase();
+  const transaction = database.transaction("recces", "readonly");
+  const sessions = await requestResult<RecceSession[]>(
+    transaction.objectStore("recces").getAll(),
+  );
+  await transactionDone(transaction);
+  return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function getRecceFixes(sessionId: string) {
+  const database = await openDatabase();
+  const transaction = database.transaction("recceFixes", "readonly");
+  const fixes = await requestResult<(RecceFix & { id: number })[]>(
+    transaction.objectStore("recceFixes").index("sessionId").getAll(sessionId),
+  );
+  await transactionDone(transaction);
+  return fixes.sort((a, b) => a.sequence - b.sequence);
+}
+
+export async function removeRecce(sessionId: string) {
+  const database = await openDatabase();
+  const transaction = database.transaction(["recces", "recceFixes"], "readwrite");
+  transaction.objectStore("recces").delete(sessionId);
+  const fixes = transaction.objectStore("recceFixes");
+  const range = IDBKeyRange.only(sessionId);
+  fixes.index("sessionId").openKeyCursor(range).onsuccess = (event) => {
+    const cursor = (event.target as IDBRequest<IDBCursor | null>).result;
+    if (!cursor) return;
+    fixes.delete(cursor.primaryKey);
+    cursor.continue();
+  };
+  await transactionDone(transaction);
+}
+
+export async function pauseInterruptedRecces() {
+  const sessions = await listRecces();
+  const recording = sessions.filter((session) => session.status === "RECORDING");
+  for (const session of recording) {
+    await saveRecceSession({
+      ...session,
+      status: "PAUSED",
+      updatedAt: Date.now(),
+    });
+  }
+  return recording.length;
 }
 
 export async function migrateLegacyStorage() {

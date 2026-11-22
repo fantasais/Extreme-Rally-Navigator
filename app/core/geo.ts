@@ -58,6 +58,11 @@ export function pointAtDistance(points: Point[], distance: number): Point {
   if (finishIndex === 0) return { ...points[0], distance: safe };
   const start = points[finishIndex - 1];
   const finish = points[finishIndex];
+  if ((start.segment ?? 0) !== (finish.segment ?? 0)) {
+    return safe - start.distance <= finish.distance - safe
+      ? { ...start, distance: safe }
+      : { ...finish, distance: safe };
+  }
   const length = finish.distance - start.distance;
   const ratio = length ? (safe - start.distance) / length : 0;
   return {
@@ -74,7 +79,14 @@ export function pointAtDistance(points: Point[], distance: number): Point {
 export function sourceGapAtDistance(points: Point[], distance: number) {
   const index = pointIndexAtDistance(points, distance);
   if (index === 0) return 0;
+  if ((points[index - 1].segment ?? 0) !== (points[index].segment ?? 0)) {
+    return Number.POSITIVE_INFINITY;
+  }
   return points[index].distance - points[index - 1].distance;
+}
+
+export function connectedSegment(points: Point[], segment: number) {
+  return (points[segment]?.segment ?? 0) === (points[segment + 1]?.segment ?? 0);
 }
 
 export type Projection = {
@@ -142,6 +154,7 @@ export function projectionsInDistanceWindow(
   }
   const projections: Projection[] = [];
   for (let segment = start; segment <= finish; segment += 1) {
+    if (!connectedSegment(points, segment)) continue;
     projections.push(projectToSegment(points, segment, target));
   }
   return projections;
@@ -153,10 +166,12 @@ export function nearestProjection(
 ) {
   let best: Projection | undefined;
   for (let segment = 0; segment < points.length - 1; segment += 1) {
+    if (!connectedSegment(points, segment)) continue;
     const projection = projectToSegment(points, segment, target);
     if (!best || projection.offset < best.offset) best = projection;
   }
-  return best!;
+  if (best) return best;
+  return projectToSegment(points, 0, target);
 }
 
 export function percentile(values: number[], fraction: number) {

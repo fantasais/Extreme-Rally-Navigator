@@ -1,4 +1,4 @@
-const CACHE = "xr-navigator-v1-20261030-1";
+const CACHE = "xr-navigator-v1-20261121-1";
 const SHELL = [
   "/",
   "/manifest.webmanifest",
